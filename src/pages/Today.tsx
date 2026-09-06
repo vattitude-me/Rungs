@@ -85,6 +85,10 @@ export default function Today() {
   const dailyGoal: number = plan.tier ?? rings.reduce((a, r) => a + r.target, 0);
   const totalLeft = Math.max(0, dailyGoal - totalDone);
   const goalHit = totalDone >= dailyGoal;
+  const totalPct = Math.round((100 * totalDone) / dailyGoal);
+  // Gold at 100%, a brighter lavender once past 75% - a visible lift before the finish line.
+  const goalBarColor = goalHit ? '#f2c14e' : totalPct >= 75 ? '#b5abfc' : '#5d5294';
+  const goalTextColor = goalHit ? '#f2c14e' : totalPct >= 75 ? '#d2cefd' : '#75798c';
 
   const nextWindow = plan.windows.find((w) => w.status === 'pending' || w.status === 'reflowed');
   const nextReps = nextWindow?.items.reduce((a, it) => a + it.reps, 0) ?? 0;
@@ -131,11 +135,11 @@ export default function Today() {
       <div className="flex flex-col gap-1.5 px-1">
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] tracking-[0.1em] text-neutral-500">TODAY'S GOAL</span>
-          <span className="text-xs tabular-nums" style={{ color: goalHit ? '#d2cefd' : '#75798c' }}>
+          <span className="text-xs tabular-nums" style={{ color: goalTextColor }}>
             {totalDone} / {dailyGoal}
           </span>
         </div>
-        <FillBar pct={Math.round((100 * totalDone) / dailyGoal)} color={goalHit ? '#9184d9' : '#5d5294'} height={11} />
+        <FillBar pct={totalPct} color={goalBarColor} height={11} />
       </div>
 
       {dashboardVariant === 'rings' ? (

@@ -7,13 +7,16 @@ import type { StreakData, DayRecord, SetLog, Exercise } from '../types';
 import { EXERCISE_LABELS, EXERCISE_COLOR, EXERCISE_CHIP_BG, EXERCISE_ICON } from '../types';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const CAL_BG = ['rgba(233,233,237,.05)', '#2b2741', '#5d5294', '#9184d9'];
+// Levels 0-4: none, started, halfway, 75%+ (brighter), 100% (gold - the payoff color).
+const CAL_BG = ['rgba(233,233,237,.05)', '#2b2741', '#5d5294', '#b5abfc', '#f2c14e'];
+const CAL_TEXT = ['#75798c', '#9397ab', '#f5f4ff', '#2b2741', '#2b2741'];
 
 function levelFromPct(pct: number): number {
   if (pct <= 0) return 0;
   if (pct < 50) return 1;
-  if (pct < 90) return 2;
-  return 3;
+  if (pct < 75) return 2;
+  if (pct < 100) return 3;
+  return 4;
 }
 
 export default function Progress() {
@@ -122,7 +125,7 @@ export default function Progress() {
             return (
               <span
                 key={i}
-                style={{ background: CAL_BG[lvl], color: lvl >= 2 ? '#f5f4ff' : '#75798c' }}
+                style={{ background: CAL_BG[lvl], color: CAL_TEXT[lvl] }}
                 className="aspect-square rounded-[7px] grid place-items-center text-[10px] tabular-nums"
               >
                 {i + 1}
