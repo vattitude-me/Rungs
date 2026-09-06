@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Bell } from 'lucide-react';
 import Button from '../../components/Button';
 import IconChip from '../../components/IconChip';
-import { getBaselineLogs, saveProfile } from '../../db';
+import Toggle from '../../components/Toggle';
+import { getBaselineLogs, saveProfile, getSettings, saveSettings } from '../../db';
 import { computeTierTargets } from '../../engine/coach';
-import { localDate } from '../../engine/dates';
+import { generateDayPlan } from '../../engine/planGenerator';
+import { localDate, dayIndexFor } from '../../engine/dates';
+import { isNative, requestNotificationPermission, scheduleWindowReminders } from '../../engine/notifications';
 import type { BarAccess, Exercise, Profile, PullRung, RowEquipment, Tier } from '../../types';
 import { EXERCISE_LABELS, EXERCISE_ICON, PULL_RUNG_LABELS, ROW_EQUIPMENT_LABELS, TIERS } from '../../types';
+
+const notificationsSupported = isNative() || (typeof window !== 'undefined' && 'Notification' in window);
 
 interface OnboardingState {
   name?: string;
@@ -27,6 +32,7 @@ export default function PlanPreview() {
 
   const [maxes, setMaxes] = useState<Record<Exercise, number> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [remindersOn, setRemindersOn] = useState(true);
 
   useEffect(() => {
     getBaselineLogs().then((logs) => {
@@ -70,6 +76,17 @@ export default function PlanPreview() {
       tierStartedAt: today,
     };
     await saveProfile(profile);
+
+    if (remindersOn && notificationsSupported) {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        const settings = await getSettings();
+        await saveSettings({ ...settings, reminders: true });
+        const plan = await generateDayPlan(today, dayIndexFor(profile.createdAt, today), profile);
+        await scheduleWindowReminders(plan);
+      }
+    }
+
     navigate('/today', { replace: true });
   };
 
@@ -174,6 +191,17 @@ export default function PlanPreview() {
           </span>
         </div>
       </div>
+
+      {notificationsSupported && (
+        <div className="flex items-center gap-3 p-3.25 rounded-[13px] bg-surface shadow-sm">
+          <IconChip size={34}><Bell size={16} /></IconChip>
+          <span className="flex-1 flex flex-col gap-0.5">
+            <span className="text-[13.5px] font-medium">Window reminders</span>
+            <span className="text-[11.5px] text-neutral-500">A nudge a few minutes before each window.</span>
+          </span>
+          <Toggle on={remindersOn} onToggle={() => setRemindersOn((r) => !r)} />
+        </div>
+      )}
 
       <div className="mt-auto">
         <Button variant="primary" block className="h-12 text-[15px]" disabled={saving} onClick={handleStart}>
