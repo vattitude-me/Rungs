@@ -1,11 +1,16 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, HardDrive, WifiOff, Share2, Trash2 } from 'lucide-react';
 import Button from '../components/Button';
 import ListRow from '../components/ListRow';
 import { resetAllData } from '../db';
 
+const CONFIRM_PHRASE = 'DELETE';
+
 export default function DataPrivacy() {
   const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
 
   const handleReset = async () => {
     await resetAllData();
@@ -54,11 +59,45 @@ export default function DataPrivacy() {
             isFirst icon={<Trash2 size={14} />} title="Delete all data"
             subtitle="Erases your profile and every logged rep, right now"
             trailing={
-              <Button variant="secondary" className="h-8 px-3 text-xs flex-none" onClick={handleReset}>
-                Delete
-              </Button>
+              !confirming && (
+                <Button
+                  variant="danger" className="h-8 px-3 text-xs flex-none"
+                  onClick={() => setConfirming(true)}
+                >
+                  Delete
+                </Button>
+              )
             }
           />
+          {confirming && (
+            <div className="flex flex-col gap-2.5 px-4 pt-1 pb-4">
+              <div className="text-[12.5px] leading-[1.5] text-neutral-400">
+                This can't be undone. Type <span className="text-text font-medium">{CONFIRM_PHRASE}</span> to confirm.
+              </div>
+              <input
+                autoFocus
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder={CONFIRM_PHRASE}
+                className="h-10 px-3 rounded-md bg-bg border border-neutral-800 text-sm text-text placeholder:text-neutral-600 focus-visible:outline-2 focus-visible:outline-danger"
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary" className="flex-1"
+                  onClick={() => { setConfirming(false); setConfirmText(''); }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger" className="flex-1"
+                  disabled={confirmText !== CONFIRM_PHRASE}
+                  onClick={handleReset}
+                >
+                  Delete everything
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

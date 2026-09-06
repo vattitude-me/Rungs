@@ -1,15 +1,21 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/Button';
 import Tag from '../../components/Tag';
+import { EXERCISE_REFERENCE } from '../../data/exerciseReference';
+import type { Exercise } from '../../types';
 
-const BAR_HEIGHTS = [14, 20, 29, 36, 47, 58, 71, 86, 100];
-const BAR_COLORS = [
-  '#423a6a', '#423a6a', '#5d5294', '#5d5294', '#796cbf',
-  '#796cbf', '#968ae0', '#b5abfc', '#9184d9',
-];
+const HERO_CYCLE: Exercise[] = ['push', 'pull', 'squat'];
+const HERO_INTERVAL_MS = 4500;
 
 export default function Welcome() {
   const navigate = useNavigate();
+  const [heroIndex, setHeroIndex] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setHeroIndex((i) => (i + 1) % HERO_CYCLE.length), HERO_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-6.5 pt-8.5 pb-action">
@@ -24,21 +30,28 @@ export default function Welcome() {
         </div>
       </div>
 
-      <div
-        className="flex-1 min-h-9 relative my-6.5 mb-1.5 rounded-2xl overflow-hidden flex items-end p-4 shadow-sm"
-        style={{ background: 'linear-gradient(150deg, #1d2033, #161826 62%)' }}
-      >
+      <div className="flex-1 min-h-9 relative my-6.5 mb-1.5 rounded-2xl overflow-hidden shadow-sm bg-bg">
+        {HERO_CYCLE.map((ex, i) => (
+          <video
+            key={ex}
+            src={EXERCISE_REFERENCE[ex].video}
+            muted
+            loop
+            autoPlay
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out"
+            style={{ opacity: i === heroIndex ? 1 : 0 }}
+          />
+        ))}
         <div
-          className="absolute -top-10 -right-7.5 w-[200px] h-[200px] rounded-full pointer-events-none"
-          style={{ background: 'radial-gradient(circle, rgba(145,132,217,.30), transparent 65%)' }}
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: 'linear-gradient(180deg, rgba(22,24,38,.15) 0%, rgba(22,24,38,.35) 55%, #161826 96%)' }}
         />
-        <div className="flex items-end gap-1.25 h-full w-full">
-          {BAR_HEIGHTS.map((h, i) => (
-            <div key={i} style={{ height: `${h}%`, background: BAR_COLORS[i] }} className="flex-1 rounded-[3px]" />
-          ))}
-        </div>
-        <div className="absolute left-4 top-3.5 text-[11px] tracking-[0.08em] text-neutral-500">
+        <div className="absolute left-4 top-3.5 text-[11px] tracking-[0.08em] text-neutral-200 font-medium" style={{ textShadow: '0 1px 4px rgba(0,0,0,.5)' }}>
           100 &nbsp;→&nbsp; 200 &nbsp;→&nbsp; 300 REPS A DAY
+        </div>
+        <div className="absolute left-4 bottom-3.5 text-[13px] font-medium text-white" style={{ textShadow: '0 1px 4px rgba(0,0,0,.5)' }}>
+          {EXERCISE_REFERENCE[HERO_CYCLE[heroIndex]].name}
         </div>
       </div>
 

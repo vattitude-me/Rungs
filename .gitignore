@@ -36,3 +36,14 @@ android/.idea
 # losing it means future releases can't update installs of this app.
 android/keystore/
 android/keystore.properties
+
+# iOS (Capacitor native project)
+ios/App/Pods
+ios/App/build
+ios/App/DerivedData
+ios/App/App.xcodeproj/xcuserdata
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata
+ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+ios/App/CapApp-SPM/.swiftpm
+ios/App/CapApp-SPM/.build
+*.xcuserstate

@@ -125,16 +125,6 @@ export default function Settings() {
         )}
       </div>
 
-      <div className="p-3.5 rounded-2xl bg-accent-900 flex flex-col gap-2.25">
-        <div className="flex items-center gap-2.25">
-          <span className="text-sm text-accent">☁</span>
-          <span className="text-[13.5px] font-medium text-accent-100">Accounts &amp; sync: coming soon</span>
-        </div>
-        <div className="text-xs leading-[1.5] text-accent-200">
-          Everything lives on your device today, no sign-up, no upload. When sync lands, your history merges into the account. Nothing to re-enter.
-        </div>
-      </div>
-
       <div className="flex-none rounded-[14px] bg-surface shadow-sm overflow-hidden">
         <button
           onClick={() => setUpcomingOpen((v) => !v)}
