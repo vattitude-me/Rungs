@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext {
@@ -50,7 +53,12 @@ export function playComplete(): void {
 // ---------------------------------------------------------------------------
 // Speech
 //
-// Android WebView is much fussier than desktop browsers here:
+// The Android system WebView's speechSynthesis implementation is unreliable
+// (getVoices() often stays empty forever, utterances silently drop) even
+// though iOS's WKWebView handles it fine - so the native app on Android uses
+// the device's own TextToSpeech engine via a Capacitor plugin instead of the
+// web Speech API. Web/iOS keep using window.speechSynthesis, which still has
+// its own quirks worth noting:
 //   - getVoices() is empty until the TTS engine loads, and speaking before a
 //     voice exists silently drops the utterance with no error.
 //   - cancel() immediately followed by speak() in the same tick kills the new
@@ -59,11 +67,14 @@ export function playComplete(): void {
 //     so the busy flag needs a timeout-based release rather than trusting it.
 // ---------------------------------------------------------------------------
 
+const useNativeTts = Capacitor.getPlatform() === 'android';
+const hasWebSpeech = !useNativeTts && typeof window !== 'undefined' && 'speechSynthesis' in window;
+
 let voicesReady = false;
 let preferredVoice: SpeechSynthesisVoice | null = null;
 
 function pickVoice(): void {
-  if (!('speechSynthesis' in window)) return;
+  if (!hasWebSpeech) return;
   const voices = speechSynthesis.getVoices();
   if (voices.length === 0) return;
   voicesReady = true;
@@ -73,10 +84,11 @@ function pickVoice(): void {
     voices[0];
 }
 
-/** Warms up the TTS engine. Must be called from a user gesture on Android -
- * the first utterance after a tap is what unblocks the engine. */
+/** Warms up the TTS engine. Must be called from a user gesture on web -
+ * the first utterance after a tap is what unblocks the engine. No-op on
+ * native Android, whose TextToSpeech engine doesn't need unlocking. */
 export function primeSpeech(): void {
-  if (!('speechSynthesis' in window)) return;
+  if (!hasWebSpeech) return;
   pickVoice();
   if (!voicesReady) {
     speechSynthesis.addEventListener('voiceschanged', pickVoice, { once: true });
@@ -97,13 +109,20 @@ let speakingTimer: ReturnType<typeof setTimeout> | null = null;
 function markSpeaking(estimatedMs: number): void {
   speaking = true;
   if (speakingTimer) clearTimeout(speakingTimer);
-  // Fallback release - Android's onend is unreliable, and a stuck flag would
-  // silence every subsequent count for the rest of the set.
+  // Fallback release - onend/promise resolution isn't always trustworthy,
+  // and a stuck flag would silence every subsequent count for the set.
   speakingTimer = setTimeout(() => { speaking = false; }, estimatedMs);
 }
 
 function speak(text: string, estimatedMs: number): void {
-  if (!('speechSynthesis' in window)) return;
+  if (useNativeTts) {
+    markSpeaking(estimatedMs);
+    TextToSpeech.speak({ text, lang: 'en-US', rate: 1.15, volume: 1, category: 'ambient' })
+      .then(() => { speaking = false; })
+      .catch(() => { speaking = false; });
+    return;
+  }
+  if (!hasWebSpeech) return;
   try {
     if (!voicesReady) pickVoice();
     const u = new SpeechSynthesisUtterance(text);
@@ -123,9 +142,9 @@ function speak(text: string, estimatedMs: number): void {
 /** Speaks the rep count. Skips the count if the previous utterance is likely
  * still in flight; below 1.0s/rep, speaks only every other rep. */
 export function speakCount(n: number, tempo: number): void {
-  if (!('speechSynthesis' in window)) return;
+  if (!useNativeTts && !hasWebSpeech) return;
   if (tempo < 1.0 && n % 2 !== 0) return;
-  // Never cancel-then-speak on Android; just skip this count instead.
+  // Never cancel-then-speak; just skip this count instead.
   if (speaking) return;
   speak(String(n), 700);
 }
@@ -142,14 +161,20 @@ export function speakMilestone(kind: keyof typeof MILESTONE_PHRASES): void {
 
 /** Stops any queued speech - used when leaving a session. */
 export function stopSpeech(): void {
-  if (!('speechSynthesis' in window)) return;
+  speaking = false;
+  if (speakingTimer) clearTimeout(speakingTimer);
+  if (useNativeTts) {
+    TextToSpeech.stop().catch(() => {
+      // no-op
+    });
+    return;
+  }
+  if (!hasWebSpeech) return;
   try {
     speechSynthesis.cancel();
   } catch {
     // no-op
   }
-  speaking = false;
-  if (speakingTimer) clearTimeout(speakingTimer);
 }
 
 export function vibrate(pattern: number | number[] = 50): void {
