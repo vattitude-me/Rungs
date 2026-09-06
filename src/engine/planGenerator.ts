@@ -117,7 +117,10 @@ export async function recordDayProgress(plan: DayPlan): Promise<void> {
     totalCompleted += Math.min(completed[ex], target);
   }
 
-  const totalVolumePct = totalTarget > 0 ? Math.round((100 * totalCompleted) / totalTarget) : 0;
+  // Round normally, but never let real activity round all the way down to an
+  // empty-looking 0% on the heatmap (e.g. 2/500 reps rounds to 0 otherwise).
+  const rawPct = totalTarget > 0 ? Math.round((100 * totalCompleted) / totalTarget) : 0;
+  const totalVolumePct = totalCompleted > 0 ? Math.max(1, rawPct) : rawPct;
   const streakCredit = computeStreakCredit(totalTarget, totalCompleted);
 
   await saveDayRecord({ date: plan.date, exercises, totalVolumePct, streakCredit });

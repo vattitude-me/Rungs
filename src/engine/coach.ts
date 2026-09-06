@@ -341,11 +341,10 @@ export function checkPullupDemotion(rung: PullRung, recentWindowPcts: number[]):
   return rung;
 }
 
-const STREAK_CREDIT_PCT = 0.7;
-
+/** Any logged activity keeps the streak alive - there's no minimum share of
+ * the day's full target required. */
 export function computeStreakCredit(totalTarget: number, totalCompleted: number): boolean {
-  if (totalTarget === 0) return false;
-  return totalCompleted / totalTarget >= STREAK_CREDIT_PCT;
+  return totalTarget > 0 && totalCompleted > 0;
 }
 
 const GRACE_WINDOW_DAYS = 14;
