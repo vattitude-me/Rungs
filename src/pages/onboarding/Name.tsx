@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import Button from '../../components/Button';
 import { getProfile } from '../../db';
@@ -8,8 +8,6 @@ const MAX_NAME = 24;
 
 export default function Name() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const skipAhead = (location.state as { skipAhead?: boolean } | null)?.skipAhead ?? false;
   const [name, setName] = useState('');
   const [touched, setTouched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -28,11 +26,7 @@ export default function Name() {
   const submit = () => {
     setTouched(true);
     if (!valid) return;
-    // Skip-ahead users go straight to equipment; the baseline step is what
-    // they're skipping, and sensible trained-user maxes are filled in there.
-    navigate(skipAhead ? '/onboarding/bar' : '/onboarding/baseline', {
-      state: { name: trimmed, skipAhead },
-    });
+    navigate('/onboarding/baseline', { state: { name: trimmed } });
   };
 
   return (
@@ -40,9 +34,9 @@ export default function Name() {
       <div className="flex items-center gap-3">
         <Button variant="icon" onClick={() => navigate('/onboarding/welcome')}><ChevronLeft size={18} /></Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
-          <i className="block h-full bg-accent" style={{ width: skipAhead ? '33%' : '25%' }} />
+          <i className="block h-full bg-accent" style={{ width: '25%' }} />
         </div>
-        <span className="text-[11px] text-neutral-500 flex-none">{skipAhead ? '1 of 3' : '1 of 4'}</span>
+        <span className="text-[11px] text-neutral-500 flex-none">1 of 4</span>
       </div>
 
       <div className="flex flex-col gap-1.5">

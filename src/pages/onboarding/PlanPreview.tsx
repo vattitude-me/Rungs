@@ -11,18 +11,12 @@ import { EXERCISE_LABELS, EXERCISE_ICON, PULL_RUNG_LABELS, ROW_EQUIPMENT_LABELS,
 
 interface OnboardingState {
   name?: string;
-  skipAhead?: boolean;
   windows?: string[];
   reflow?: boolean;
   barAccess?: BarAccess;
   pullRung?: PullRung;
   rowEquipment?: RowEquipment;
 }
-
-/** Stand-in maxes for someone who skipped the baseline test - a person who
- * says "I already train" but gave us no numbers. Deliberately modest so the
- * first day is achievable rather than discouraging. */
-const TRAINED_DEFAULT_MAXES: Record<Exercise, number> = { push: 12, pull: 3, squat: 25 };
 
 const FIRST_TIER: Tier = 100;
 
@@ -36,11 +30,7 @@ export default function PlanPreview() {
 
   useEffect(() => {
     getBaselineLogs().then((logs) => {
-      if (logs.length === 0) {
-        setMaxes(TRAINED_DEFAULT_MAXES);
-        return;
-      }
-      const m: Record<Exercise, number> = { ...TRAINED_DEFAULT_MAXES };
+      const m: Record<Exercise, number> = { push: 0, pull: 0, squat: 0 };
       for (const log of logs) m[log.exercise] = log.maxReps;
       setMaxes(m);
     });
@@ -75,7 +65,7 @@ export default function PlanPreview() {
       windowTimes: state.windows,
       reflow: state.reflow ?? true,
       onboardingComplete: true,
-      baselineComplete: !state.skipAhead,
+      baselineComplete: true,
       tier: FIRST_TIER,
       tierStartedAt: today,
     };

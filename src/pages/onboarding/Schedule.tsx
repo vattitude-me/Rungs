@@ -14,7 +14,8 @@ interface ProposedWindow {
   len: string;
 }
 
-const DEFAULT_MAXES: Record<Exercise, number> = { push: 12, pull: 3, squat: 25 };
+// Placeholder shown for the instant before the real baseline logs load.
+const PLACEHOLDER_MAXES: Record<Exercise, number> = { push: 12, pull: 3, squat: 25 };
 const WAKE = '06:30';
 const SLEEP = '23:00';
 const WINDOW_COUNT = 4;
@@ -38,16 +39,15 @@ export default function Schedule() {
   const navigate = useNavigate();
   const location = useLocation();
   const navState = (location.state as Record<string, unknown> | null) ?? {};
-  const skipAhead = navState.skipAhead === true;
   const [reflow, setReflow] = useState(true);
-  const [proposal, setProposal] = useState<ProposedWindow[]>(() => buildProposal(DEFAULT_MAXES));
+  const [proposal, setProposal] = useState<ProposedWindow[]>(() => buildProposal(PLACEHOLDER_MAXES));
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftTime, setDraftTime] = useState('');
 
   useEffect(() => {
     getBaselineLogs().then((logs) => {
       if (logs.length === 0) return;
-      const m: Record<Exercise, number> = { ...DEFAULT_MAXES };
+      const m: Record<Exercise, number> = { ...PLACEHOLDER_MAXES };
       for (const log of logs) m[log.exercise] = log.maxReps;
       setProposal(buildProposal(m));
     });
@@ -80,7 +80,7 @@ export default function Schedule() {
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
           <i className="block h-full bg-accent" style={{ width: '100%' }} />
         </div>
-        <span className="text-[11px] text-neutral-500 flex-none">{skipAhead ? '3 of 3' : '4 of 4'}</span>
+        <span className="text-[11px] text-neutral-500 flex-none">4 of 4</span>
       </div>
 
       <div className="flex flex-col gap-1.5">

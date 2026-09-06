@@ -29,7 +29,7 @@ function suggestRung(pullMax: number, bar: BarAccess): PullRung {
 export default function Equipment() {
   const navigate = useNavigate();
   const location = useLocation();
-  const navState = (location.state as { name?: string; skipAhead?: boolean } | null) ?? {};
+  const navState = (location.state as { name?: string } | null) ?? {};
 
   const [bar, setBar] = useState<BarAccess>('doorway');
   const [rung, setRung] = useState<PullRung>(2);
@@ -61,16 +61,14 @@ export default function Equipment() {
       <div className="flex items-center gap-3">
         <Button
           variant="icon"
-          onClick={() => navigate(navState.skipAhead ? '/onboarding/name' : '/onboarding/baseline', { state: navState })}
+          onClick={() => navigate('/onboarding/baseline', { state: navState })}
         >
           <ChevronLeft size={18} />
         </Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
-          <i className="block h-full bg-accent" style={{ width: navState.skipAhead ? '66%' : '75%' }} />
+          <i className="block h-full bg-accent" style={{ width: '75%' }} />
         </div>
-        <span className="text-[11px] text-neutral-500 flex-none">
-          {navState.skipAhead ? '2 of 3' : '3 of 4'}
-        </span>
+        <span className="text-[11px] text-neutral-500 flex-none">3 of 4</span>
       </div>
 
       <div className="flex flex-col gap-1.5">

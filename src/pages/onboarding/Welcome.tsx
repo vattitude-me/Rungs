@@ -62,12 +62,6 @@ export default function Welcome() {
         >
           Find my starting point
         </Button>
-        <Button
-          variant="secondary" block className="h-11"
-          onClick={() => navigate('/onboarding/name', { state: { skipAhead: true } })}
-        >
-          I already train, skip ahead
-        </Button>
         <div className="flex justify-center gap-2 mt-1.5">
           <Tag variant="neutral">Free forever</Tag>
           <Tag variant="neutral">Works offline</Tag>

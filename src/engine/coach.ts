@@ -17,6 +17,12 @@ const EXERCISES: Exercise[] = ['push', 'pull', 'squat'];
  * exercise ever drops out of the plan entirely - even a zero pull-up max. */
 const MIN_SHARE = 0.08;
 
+/** Relative difficulty used only when every max is 0 (a true first-day
+ * beginner with no signal to weight by): squats are the easiest bodyweight
+ * movement to start from, pull-ups the hardest, so the day leans that way
+ * instead of splitting three ways evenly. */
+const NO_SIGNAL_WEIGHTS: Record<Exercise, number> = { push: 1.2, pull: 0.6, squat: 2 };
+
 /** Per-exercise share weights, from each max relative to the total. Blended
  * toward an even 1/3 split as the tier climbs, since tier 300 is by
  * definition an even 100/100/100. */
@@ -24,8 +30,13 @@ export function computeShares(
   maxes: Record<Exercise, number>,
   tier: Tier
 ): Record<Exercise, number> {
-  // +1 so a zero max still gets a floor rather than dividing by zero.
-  const weights = EXERCISES.map((ex) => Math.max(0, maxes[ex] ?? 0) + 1);
+  const rawMaxes = EXERCISES.map((ex) => Math.max(0, maxes[ex] ?? 0));
+  const hasSignal = rawMaxes.some((m) => m > 0);
+  // With no real numbers to weight by, fall back to relative difficulty
+  // rather than treating "0/0/0" the same as "any three equal maxes."
+  const weights = hasSignal
+    ? rawMaxes
+    : EXERCISES.map((ex) => NO_SIGNAL_WEIGHTS[ex]);
   const totalWeight = weights.reduce((a, b) => a + b, 0);
 
   // 0 at tier 100 (fully strength-weighted) → 1 at tier 300 (fully even).
