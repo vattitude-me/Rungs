@@ -6,7 +6,7 @@ import TempoSlider from '../components/TempoSlider';
 import ModeChip from '../components/ModeChip';
 import IconChip from '../components/IconChip';
 import { useCadenceEngine } from '../hooks/useCadenceEngine';
-import { getSettings, saveSetLog, getDayPlan, saveDayPlan, saveBaselineLog } from '../db';
+import { getSettings, saveSetLog, getDayPlan, saveDayPlan, saveBaselineLog, getSetLogs } from '../db';
 import { recordDayProgress } from '../engine/planGenerator';
 import { localDate, localTime } from '../engine/dates';
 import { EXERCISE_REFERENCE } from '../data/exerciseReference';
@@ -141,7 +141,7 @@ export default function Session() {
       navigate('/onboarding/baseline', { replace: true, state: location.state });
       return;
     }
-    saveSetLog({
+    const logged = saveSetLog({
       id: `${Date.now()}`,
       date: today,
       at: localTime(),
@@ -154,15 +154,29 @@ export default function Session() {
       source: isAdhoc ? 'manual' : 'session',
       completedAt: Date.now(),
     });
-    getDayPlan(today).then(async (plan) => {
+    logged.then(() => getDayPlan(today)).then(async (plan) => {
       if (!plan) return;
-      if (!hasNextItem && windowId) {
-        const updated = { ...plan, windows: plan.windows.map((w) => (w.id === windowId ? { ...w, status: 'done' as const } : w)) };
-        await saveDayPlan(updated);
-        await recordDayProgress(updated);
-      } else {
-        await recordDayProgress(plan);
+      const window = windowId ? plan.windows.find((w) => w.id === windowId) : undefined;
+      if (!hasNextItem && window) {
+        // Only close out the window once every item in it actually hit its
+        // target - banking a partial set (e.g. 10 of 34 squats) must not
+        // check the window off, or it never resurfaces for the shortfall.
+        const logs = await getSetLogs(today);
+        const bankedForWindow = logs.filter((l) => l.windowId === windowId);
+        const metTarget = window.items.every((wi) => {
+          const banked = bankedForWindow
+            .filter((l) => l.exercise === wi.exercise)
+            .reduce((sum, l) => sum + l.reps, 0);
+          return banked >= wi.reps;
+        });
+        if (metTarget) {
+          const updated = { ...plan, windows: plan.windows.map((w) => (w.id === windowId ? { ...w, status: 'done' as const } : w)) };
+          await saveDayPlan(updated);
+          await recordDayProgress(updated);
+          return;
+        }
       }
+      await recordDayProgress(plan);
     });
 
     if (hasNextItem) {
