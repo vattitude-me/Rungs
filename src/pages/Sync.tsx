@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, LogOut, Trash2, ShieldCheck, RefreshCw, UserX } from 'lucide-react';
+import { ChevronLeft, LogOut, Trash2, ShieldCheck, RefreshCw, UserX, ArrowRight } from 'lucide-react';
 import Button from '../components/Button';
 import ListRow from '../components/ListRow';
+import { getProfile } from '../db';
 import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
 import type { BackupMeta } from '../cloud/sync';
@@ -35,9 +36,20 @@ export default function Sync() {
 
   const { account, state, signIn, disconnect, syncNow } = useCloudSync();
   const [meta, setMeta] = useState<BackupMeta | null>(null);
+  // Whether this device has a usable profile yet. A restore creates one, so
+  // this is what separates "signed in, ready to train" from "signed in
+  // part-way through setting up".
+  const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getProfile().then((p) => {
+      if (!cancelled) setHasProfile(Boolean(p?.onboardingComplete));
+    });
+  }, [account, state]);
 
   const refreshMeta = useCallback(async (uid: string) => {
     try {
@@ -73,7 +85,14 @@ export default function Sync() {
       <div className="flex items-center gap-3">
         <Button
           variant="icon"
-          onClick={() => (fromWelcome ? navigate('/onboarding/welcome') : navigate(-1))}
+          onClick={() => {
+            // Back into onboarding is the wrong destination once there's a
+            // profile to use - a restore is exactly the case where the splash
+            // behind you is no longer where you belong.
+            if (hasProfile) navigate('/today', { replace: true });
+            else if (fromWelcome) navigate('/onboarding/welcome');
+            else navigate(-1);
+          }}
         >
           <ChevronLeft size={18} />
         </Button>
@@ -126,9 +145,16 @@ export default function Sync() {
                 <ListRow
                   isFirst icon={<ShieldCheck size={14} />}
                   title={account.email ?? account.displayName ?? 'Signed in'}
-                  subtitle={meta
-                    ? `Last saved ${describeWhen(meta.updatedAt)} · ${countReps(meta)}`
-                    : 'Nothing saved yet'}
+                  subtitle={
+                    // An empty backup is worth saying plainly. "Last saved 1h
+                    // ago - 0 sets across 0 days" reads as though something is
+                    // safely stored when nothing is, which is the one thing a
+                    // backup screen must never imply.
+                    !meta ? 'Nothing backed up yet'
+                    : (meta.counts.setLogs ?? 0) === 0 && (meta.counts.dayRecords ?? 0) === 0
+                      ? 'Signed in · nothing to back up yet'
+                      : `Last saved ${describeWhen(meta.updatedAt)} · ${countReps(meta)}`
+                  }
                 />
                 <ListRow
                   icon={<RefreshCw size={14} />}
@@ -143,6 +169,32 @@ export default function Sync() {
                   trailing={<span className="text-[13px] text-neutral-600">›</span>}
                 />
               </div>
+
+              {/* The way out. Without this the only exit is the back chevron,
+                  which from the welcome splash leads back to onboarding - a
+                  dead end for someone who just restored their history and
+                  wants to start training. */}
+              {hasProfile === true ? (
+                <Button
+                  variant="primary" block className="h-12 text-[15px]"
+                  onClick={() => navigate('/today', { replace: true })}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    Go to today
+                    <ArrowRight size={16} />
+                  </span>
+                </Button>
+              ) : hasProfile === false ? (
+                <Button
+                  variant="primary" block className="h-12 text-[15px]"
+                  onClick={() => navigate('/onboarding/name', { replace: true })}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    Set up my plan
+                    <ArrowRight size={16} />
+                  </span>
+                </Button>
+              ) : null}
 
               <div className="flex flex-col gap-1.75 mt-1">
                 <span className="text-[11px] tracking-[0.1em] text-neutral-500">ACCOUNT</span>

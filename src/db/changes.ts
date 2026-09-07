@@ -70,10 +70,19 @@ export function syncedGeneration(): number {
   return read(SYNCED_GENERATION);
 }
 
-/** True when this device holds writes the cloud hasn't got. */
+/** True when this device holds writes the cloud hasn't got.
+ *
+ * A device that has never recorded a change but has never uploaded either is
+ * treated as dirty rather than clean. Local data can predate this bookkeeping
+ * entirely - anything logged before signing in, or before the sync feature
+ * existed - and calling that "nothing to back up" would quietly strand a
+ * user's whole history on one device. The caller pairs this with a check for
+ * whether any data actually exists, so an empty install still doesn't push. */
 export function hasUnsyncedChanges(): boolean {
   const changed = lastChangedAt();
-  return changed > 0 && changed > lastSyncedAt();
+  const synced = lastSyncedAt();
+  if (changed === 0) return synced === 0;
+  return changed > synced;
 }
 
 /** Notifies on local writes, so the auto-sync scheduler can debounce against
