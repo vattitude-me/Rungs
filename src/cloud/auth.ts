@@ -42,6 +42,26 @@ function credentialFromNativeResult(idToken: string | undefined, accessToken: st
   return GoogleAuthProvider.credential(idToken, accessToken);
 }
 
+/** The native Google Sign-In dialog rejects with whatever message the
+ * Android Credential Manager / Play Services happened to throw - useful for
+ * debugging, not for a user to act on. `GetCredentialException` in
+ * particular carries no stable error code (only `FirebaseAuthException` does,
+ * per the plugin's own `createErrorCode`), so a network failure below the
+ * picker - confirmed against a real device log: Play Services' own OAuth
+ * token request failing with a Cronet network error right after the account
+ * is chosen - only shows up as free text like "Network error.". Matching on
+ * that text is the only signal available; anything unrecognised is left as
+ * the plugin gave it rather than guessed at. */
+function describeNativeSignInError(message: string): string {
+  if (/network/i.test(message)) {
+    return "Couldn't reach Google - check your connection and try again.";
+  }
+  if (/cancel/i.test(message)) {
+    return 'Sign-in was cancelled.';
+  }
+  return message;
+}
+
 export async function signIn(): Promise<CloudAccount | null> {
   const auth = cloudAuth();
 
@@ -52,7 +72,13 @@ export async function signIn(): Promise<CloudAccount | null> {
   // resulting token to the web SDK so the rest of the app - Firestore rules,
   // onAuthStateChanged - sees one consistent signed-in user either way.
   if (Capacitor.isNativePlatform()) {
-    const result = await FirebaseAuthentication.signInWithGoogle();
+    let result;
+    try {
+      result = await FirebaseAuthentication.signInWithGoogle();
+    } catch (err) {
+      const message = (err as { message?: string }).message ?? 'Sign-in failed.';
+      throw new Error(describeNativeSignInError(message));
+    }
     const credential = credentialFromNativeResult(
       result.credential?.idToken,
       result.credential?.accessToken

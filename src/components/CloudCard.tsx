@@ -68,6 +68,11 @@ export default function CloudCard() {
             ×
           </button>
         </div>
+        {state.status === 'error' && (
+          <div className="text-[12px] leading-[1.5] text-danger">
+            {state.message} Tap the button to try again.
+          </div>
+        )}
         <Button variant="primary" block className="h-10 text-[13.5px]" onClick={() => void signIn()}>
           {state.status === 'syncing' ? 'Opening…' : 'Continue with Google'}
         </Button>
