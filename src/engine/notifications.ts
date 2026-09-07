@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { parseLocalDate } from './dates';
 import type { DayPlan } from '../types';
 import { EXERCISE_LABELS } from '../types';
 
@@ -82,7 +83,7 @@ export async function scheduleWindowReminders(plan: DayPlan): Promise<void> {
     .filter((w) => w.status === 'pending' || w.status === 'reflowed')
     .map((w) => {
       const [h, m] = w.at.split(':').map(Number);
-      const at = new Date(plan.date);
+      const at = parseLocalDate(plan.date);
       at.setHours(h, m - LEAD_MINUTES, 0, 0);
       return { window: w, at };
     })
