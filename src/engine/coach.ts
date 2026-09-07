@@ -287,18 +287,19 @@ export function reflow(windows: Window[], missedWindowId: string): Window[] {
  * wrecks the rest of the day's windows. */
 const SET_MAX_FRACTION = 0.8;
 
-/** Ceilings for when there's no tested max to scale from (a 0/0/0 baseline),
- * and as an upper bound for a very strong max - 60 unbroken squats is a
- * grind whatever your max is. */
-const SET_CEILING: Record<Exercise, number> = { push: 20, pull: 8, squat: 25 };
+/** Stand-in set sizes for someone with no tested max at all (a 0/0/0
+ * baseline). Only used in that case - a real max always wins, in both
+ * directions, since it's the one number that says what this person can
+ * actually do. */
+const NO_MAX_SET: Record<Exercise, number> = { push: 20, pull: 8, squat: 25 };
 
 /** Largest single set we'll ask of someone for one exercise: 80% of their
- * tested max, held within a sane ceiling and at least 5 so the day never
- * fragments into a dozen trivial sets. */
+ * tested max, so a set is hard but finishable rather than to failure. Never
+ * more than the max itself - asking for 5 of something you can do 3 of is
+ * just an impossible set. */
 export function setCapFor(exercise: Exercise, max: number): number {
-  const fromMax = Math.floor(Math.max(0, max) * SET_MAX_FRACTION);
-  const capped = Math.min(fromMax || SET_CEILING[exercise], SET_CEILING[exercise]);
-  return Math.max(5, capped);
+  if (max <= 0) return NO_MAX_SET[exercise];
+  return Math.max(1, Math.floor(max * SET_MAX_FRACTION));
 }
 
 /** Breaks a window's items into sets no larger than the user can reasonably
