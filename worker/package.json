@@ -1,0 +1,14 @@
+{
+  "name": "rungs-push-worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "once": "node index.js --once"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

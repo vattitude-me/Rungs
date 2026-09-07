@@ -16,6 +16,7 @@ import { generateDayPlan, rebuildTodayWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor, daysBetweenDates } from '../engine/dates';
 import { shouldRebaseline } from '../engine/coach';
 import { cloudConfigured } from '../cloud/config';
+import { useCloudSync } from '../hooks/useCloudSync';
 import type { Profile, AppSettings } from '../types';
 
 type NotifState = 'granted' | 'denied' | 'unsupported';
@@ -49,11 +50,16 @@ const UPCOMING_FEATURES = [
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { account } = useCloudSync();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [upcomingOpen, setUpcomingOpen] = useState(false);
+  // Whether this browser can receive pushed reminders, and whether iOS is
+  // holding it back until the app is installed to the Home Screen.
+  const [pushReady, setPushReady] = useState(false);
+  const [needsInstall, setNeedsInstall] = useState(false);
   const [editingWindow, setEditingWindow] = useState<number | null>(null);
   const [windowDraft, setWindowDraft] = useState('');
   const [notifPermission, setNotifPermission] = useState<NotifState>(
@@ -126,6 +132,14 @@ export default function Settings() {
     await saveSettings(next);
   };
 
+  useEffect(() => {
+    if (isNative()) return;
+    void import('../cloud/push').then(async (push) => {
+      setPushReady(await push.pushSupported());
+      setNeedsInstall(push.needsHomeScreenInstall());
+    });
+  }, []);
+
   const toggleReminders = async () => {
     const turningOn = !settings.reminders;
 
@@ -139,6 +153,17 @@ export default function Settings() {
     }
 
     await updateSetting({ reminders: turningOn });
+
+    // In a browser the app can't schedule anything that survives the tab
+    // closing, so a signed-in web user gets reminders pushed from the server
+    // instead. Native builds schedule locally and need none of this.
+    if (account) {
+      const push = await import('../cloud/push');
+      if (await push.pushSupported()) {
+        if (turningOn) await push.registerPush(account.uid).catch(() => false);
+        else await push.unregisterPush(account.uid);
+      }
+    }
 
     // Push the change to the OS scheduler straight away rather than waiting for
     // the next poll, so the toggle feels like it did something.
@@ -325,7 +350,16 @@ export default function Settings() {
                     : 'Blocked, enable in browser settings'
                   : isNative()
                     ? '5 minutes before each window'
-                    : '5 minutes before each window, while the app is open'
+                    // In a browser nothing of the app runs once the tab is
+                    // closed, so reminders only survive that if they're pushed
+                    // from the server - which needs an account.
+                    : account && pushReady
+                      ? '5 minutes before each window'
+                      : needsInstall
+                        ? 'Add to Home Screen first, then sign in'
+                        : account
+                          ? '5 minutes before each window, while the app is open'
+                          : 'Sign in to get reminders while the app is closed'
             }
             trailing={
               <Toggle

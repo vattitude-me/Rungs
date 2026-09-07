@@ -17,6 +17,12 @@ export const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+/** Public VAPID key for web push, from Firebase Console > Project settings >
+ * Cloud Messaging > Web Push certificates. Public by design - it identifies
+ * the sender to the browser's push service and carries no authority to send;
+ * only the private half, which lives on the reminder worker, can do that. */
+export const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY ?? '';
+
 /** Whether this build was given Firebase credentials. Everything cloud-facing
  * checks this first so the UI can hide backup entirely rather than offering a
  * button that throws. */

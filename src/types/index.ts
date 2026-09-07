@@ -32,6 +32,12 @@ export interface Profile {
   onboardingComplete: boolean;
   baselineComplete: boolean;
   lastRebaselineAt?: string; // ISO date
+  /** IANA timezone, e.g. "Australia/Melbourne". Window times are local
+   * wall-clock strings, so a server sending push has no way to know which
+   * 09:00 is meant without this. Refreshed on every app open so it follows
+   * the user if they travel or if their region's DST rules change. Optional
+   * so profiles saved before push existed still load. */
+  timeZone?: string;
   /** Current daily-total tier. Starts at 100, promotes to 200 then 300. */
   tier: Tier;
   /** Date the user reached the current tier, used to gate promotion. */

@@ -55,3 +55,13 @@ ios/App/CapApp-SPM/.build
 .env.*
 !.env.example
 android/app/google-services.json
+
+# Firebase admin credentials for the reminder worker. Full read/write access
+# to Firestore and the ability to send push as the app - never commit.
+# The broad *.json rule is deliberate: a key downloaded under whatever name
+# the console gave it must not slip through. package.json is re-included
+# after it, since a later negation is what overrides an earlier match.
+worker/*.json
+!worker/package.json
+!worker/package-lock.json
+worker/node_modules/

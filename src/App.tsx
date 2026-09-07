@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { getProfile } from './db';
+import { getProfile, saveProfile } from './db';
 import { useReminders } from './hooks/useReminders';
 import { useAndroidBackButton } from './hooks/useAndroidBackButton';
 import type { Profile } from './types';
@@ -31,7 +31,18 @@ export default function App() {
   useAndroidBackButton();
 
   useEffect(() => {
-    getProfile().then((p) => setProfile(p ?? null));
+    getProfile().then(async (p) => {
+      setProfile(p ?? null);
+      if (!p) return;
+      // Window times are local wall-clock strings, so the reminder worker
+      // needs to know which local. Refreshed on every open rather than set
+      // once, so it follows the user if they travel or their region changes
+      // its DST rules.
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (zone && zone !== p.timeZone) {
+        await saveProfile({ ...p, timeZone: zone });
+      }
+    });
   }, []);
 
   useEffect(() => {
