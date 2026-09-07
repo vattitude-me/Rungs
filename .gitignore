@@ -47,3 +47,10 @@ ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
 ios/App/CapApp-SPM/.swiftpm
 ios/App/CapApp-SPM/.build
 *.xcuserstate
+
+# Local environment config. The Firebase values in here are publishable, but
+# they still don't belong in the repo: they pin one project into the source,
+# and deployed builds get them from the host's environment instead.
+.env
+.env.*
+!.env.example
