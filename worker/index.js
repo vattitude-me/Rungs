@@ -17,7 +17,7 @@
 import { initializeApp, cert, applicationDefault } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 
 /** How long before a window to nudge. Matches LEAD_MINUTES in the app, so web
  * and native reminders arrive at the same moment. */
@@ -245,8 +245,24 @@ async function tick(db, messaging) {
 function credential() {
   const inline = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (inline) return cert(JSON.parse(inline));
+
   const path = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (path) return cert(JSON.parse(readFileSync(path, 'utf8')));
+  if (path) {
+    // A bind mount whose source file doesn't exist yet makes Docker create a
+    // *directory* at that path, so the readable error here is "EISDIR" from
+    // deep inside fs. Say what actually needs doing instead.
+    if (!existsSync(path) || statSync(path).isDirectory()) {
+      throw new Error(
+        `No service account key at ${path}.\n` +
+        '  Firebase Console > Project settings > Service accounts >\n' +
+        '  "Generate new private key", save it as service-account.json\n' +
+        '  next to compose.yaml, then: docker compose up -d\n' +
+        '  (If a directory was created there by an earlier run, remove it first.)'
+      );
+    }
+    return cert(JSON.parse(readFileSync(path, 'utf8')));
+  }
+
   return applicationDefault();
 }
 
