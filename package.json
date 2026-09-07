@@ -1,7 +1,7 @@
 {
   "name": "rungs",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",
+    "@capacitor-firebase/authentication": "^8.5.1",
     "@capacitor/android": "^8.5.1",
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.5.1",

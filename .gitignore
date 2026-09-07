@@ -54,3 +54,4 @@ ios/App/CapApp-SPM/.build
 .env
 .env.*
 !.env.example
+android/app/google-services.json

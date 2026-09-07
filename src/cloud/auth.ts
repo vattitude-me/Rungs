@@ -1,9 +1,10 @@
 import {
   GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
-  signOut as fbSignOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup,
-  type User,
+  signInWithCredential, signOut as fbSignOut, onAuthStateChanged, deleteUser,
+  reauthenticateWithPopup, reauthenticateWithCredential, type User,
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { cloudAuth } from './firebase';
 
 export type { User };
@@ -31,18 +32,36 @@ export async function resumeSignIn(): Promise<CloudAccount | null> {
   return toAccount(result?.user ?? null);
 }
 
+/** Builds the Firebase web-SDK credential from a native Google Sign-In
+ * result, so a native sign-in ends up in the same `Auth` instance (and is
+ * visible to the same `onAuthStateChanged`) as a web one. */
+function credentialFromNativeResult(idToken: string | undefined, accessToken: string | undefined) {
+  if (!idToken) {
+    throw new Error('Google sign-in did not return an ID token.');
+  }
+  return GoogleAuthProvider.credential(idToken, accessToken);
+}
+
 export async function signIn(): Promise<CloudAccount | null> {
-  const provider = new GoogleAuthProvider();
   const auth = cloudAuth();
 
-  // A popup can't be used inside a Capacitor WebView - there's no browser
-  // chrome to host it, and the OAuth window has no way back to the app. Native
-  // builds redirect instead and pick the result up on the next load.
+  // A browser popup or redirect can't be used inside a Capacitor WebView -
+  // there's no browser chrome to host a popup, and a redirect has nowhere to
+  // navigate back to (the app isn't served from a reachable origin). Native
+  // builds use the OS's own Google Sign-In dialog instead, then hand the
+  // resulting token to the web SDK so the rest of the app - Firestore rules,
+  // onAuthStateChanged - sees one consistent signed-in user either way.
   if (Capacitor.isNativePlatform()) {
-    await signInWithRedirect(auth, provider);
-    return null;
+    const result = await FirebaseAuthentication.signInWithGoogle();
+    const credential = credentialFromNativeResult(
+      result.credential?.idToken,
+      result.credential?.accessToken
+    );
+    const signedIn = await signInWithCredential(auth, credential);
+    return toAccount(signedIn.user);
   }
 
+  const provider = new GoogleAuthProvider();
   try {
     const result = await signInWithPopup(auth, provider);
     return toAccount(result.user);
@@ -59,6 +78,12 @@ export async function signIn(): Promise<CloudAccount | null> {
 }
 
 export async function signOut(): Promise<void> {
+  // The native plugin keeps its own Google session apart from Firebase's -
+  // signing out of Firebase alone would leave native sign-in silently
+  // re-using the old Google account next time instead of prompting again.
+  if (Capacitor.isNativePlatform()) {
+    await FirebaseAuthentication.signOut();
+  }
   await fbSignOut(cloudAuth());
 }
 
@@ -82,7 +107,17 @@ export async function deleteAccount(): Promise<void> {
     if (code !== 'auth/requires-recent-login') throw err;
 
     if (Capacitor.isNativePlatform()) {
-      throw new Error('Please sign out, sign in again, and then delete your account.');
+      // Same native-dialog path as signing in, then reauthenticate the
+      // existing web-SDK user with the fresh credential rather than signing
+      // in as a new one.
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      const credential = credentialFromNativeResult(
+        result.credential?.idToken,
+        result.credential?.accessToken
+      );
+      await reauthenticateWithCredential(user, credential);
+      await deleteUser(user);
+      return;
     }
     await reauthenticateWithPopup(user, new GoogleAuthProvider());
     await deleteUser(user);
