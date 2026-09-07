@@ -22,6 +22,7 @@ import Squad from './pages/Squad';
 import Settings from './pages/Settings';
 import DataPrivacy from './pages/DataPrivacy';
 import Retest from './pages/Retest';
+import Sync from './pages/Sync';
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/session/log" element={<LogReps />} />
         <Route path="/settings/privacy" element={<DataPrivacy />} />
         <Route path="/settings/retest" element={<Retest />} />
+        <Route path="/settings/sync" element={<Sync />} />
         <Route element={<Layout />}>
           <Route path="/today" element={<Today />} />
           <Route path="/progress" element={<Progress />} />

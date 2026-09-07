@@ -31,6 +31,21 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The Firebase SDK is ~530 KB and only the cloud-backup screen needs
+        // it. Precaching it would make every install pay that cost up front,
+        // including the many users who never sign in, so it's fetched on
+        // demand and cached at runtime the first time it's actually opened.
+        globIgnores: ['**/firebase-*.js'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/firebase-.*\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'firebase-sdk',
+              expiration: { maxEntries: 4 },
+            },
+          },
+        ],
       },
     }),
   ],

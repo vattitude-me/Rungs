@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// Rungs cloud backup.
+//
+// The entire data model is one subtree per user, and the only rule that
+// matters is that a user can reach nothing but their own. There is no shared
+// or public data here, so nothing grants read access to anyone else - not
+// even authenticated users, who are still strangers with respect to each
+// other's workout history.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      // The backup's chunked tables live beneath the user document. The same
+      // ownership check applies at every depth, so a nested path can't be used
+      // to sidestep it.
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+  }
+}

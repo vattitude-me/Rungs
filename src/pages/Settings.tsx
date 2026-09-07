@@ -15,6 +15,7 @@ import {
 import { generateDayPlan, rebuildTodayWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor, daysBetweenDates } from '../engine/dates';
 import { shouldRebaseline } from '../engine/coach';
+import { cloudConfigured } from '../cloud/config';
 import type { Profile, AppSettings } from '../types';
 
 type NotifState = 'granted' | 'denied' | 'unsupported';
@@ -38,7 +39,6 @@ function evenTimes(count: number): string[] {
 }
 
 const UPCOMING_FEATURES = [
-  { icon: Cloud, title: 'Accounts & sync', subtitle: 'Sign in, merge history across devices' },
   { icon: UserPlus, title: 'Friends', subtitle: 'Add friends, see their streaks' },
   { icon: Users, title: 'Squad', subtitle: 'Group feed, leaderboards' },
   { icon: Sparkles, title: 'Motivational nudges', subtitle: 'Playful, max two a day' },
@@ -333,7 +333,10 @@ export default function Settings() {
               />
             }
           />
-          <ListRow icon={<Lock size={14} />} title="Data & privacy" subtitle="On-device only, nothing shared" trailing={<span className="text-[13px] text-neutral-600">›</span>} onClick={() => navigate('/settings/privacy')} />
+          {cloudConfigured && (
+            <ListRow icon={<Cloud size={14} />} title="Cloud backup" subtitle="Save your history, restore on a new device" trailing={<span className="text-[13px] text-neutral-600">›</span>} onClick={() => navigate('/settings/sync')} />
+          )}
+          <ListRow icon={<Lock size={14} />} title="Data & privacy" subtitle={cloudConfigured ? 'What\u2019s stored, and where' : 'On-device only, nothing shared'} trailing={<span className="text-[13px] text-neutral-600">›</span>} onClick={() => navigate('/settings/privacy')} />
           <ListRow icon={<Info size={14} />} title="About Rungs" subtitle={`v${__APP_VERSION__} · free forever`} trailing={<span className="text-[13px] text-neutral-600">›</span>} />
         </div>
       </div>

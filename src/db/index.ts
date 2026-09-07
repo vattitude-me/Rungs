@@ -167,6 +167,60 @@ export async function saveStreak(streak: StreakData): Promise<void> {
   await db.streaks.put({ ...streak, id: SINGLETON_ID });
 }
 
+/** Everything this install holds, in one plain object - the unit that gets
+ * backed up and restored. Table names match the Dexie tables exactly so a
+ * restore can write each one back without a mapping step. */
+export interface LocalSnapshot {
+  profile: Profile[];
+  baselineLogs: BaselineLog[];
+  dayPlans: DayPlan[];
+  setLogs: SetLog[];
+  dayRecords: DayRecord[];
+  settings: AppSettings[];
+  streaks: StreakData[];
+}
+
+export async function exportSnapshot(): Promise<LocalSnapshot> {
+  const [profile, baselineLogs, dayPlans, setLogs, dayRecords, settings, streaks] =
+    await Promise.all([
+      db.profile.toArray(),
+      db.baselineLogs.toArray(),
+      db.dayPlans.toArray(),
+      db.setLogs.toArray(),
+      db.dayRecords.toArray(),
+      db.settings.toArray(),
+      db.streaks.toArray(),
+    ]);
+  return { profile, baselineLogs, dayPlans, setLogs, dayRecords, settings, streaks };
+}
+
+/** Replaces every table with the snapshot's contents, in one transaction so a
+ * failure part-way can't leave half of one backup stitched onto half of
+ * another. Restore is deliberately a replace rather than a merge: merging two
+ * divergent histories would have to invent an answer for derived values like
+ * the streak, and silently getting that wrong is worse than being told the
+ * local copy is about to be overwritten. */
+export async function importSnapshot(snapshot: LocalSnapshot): Promise<void> {
+  await db.transaction('rw', [
+    db.profile, db.baselineLogs, db.dayPlans, db.setLogs,
+    db.dayRecords, db.settings, db.streaks,
+  ], async () => {
+    await Promise.all([
+      db.profile.clear(), db.baselineLogs.clear(), db.dayPlans.clear(),
+      db.setLogs.clear(), db.dayRecords.clear(), db.settings.clear(), db.streaks.clear(),
+    ]);
+    await Promise.all([
+      db.profile.bulkPut(snapshot.profile ?? []),
+      db.baselineLogs.bulkPut(snapshot.baselineLogs ?? []),
+      db.dayPlans.bulkPut(snapshot.dayPlans ?? []),
+      db.setLogs.bulkPut(snapshot.setLogs ?? []),
+      db.dayRecords.bulkPut(snapshot.dayRecords ?? []),
+      db.settings.bulkPut(snapshot.settings ?? []),
+      db.streaks.bulkPut(snapshot.streaks ?? []),
+    ]);
+  });
+}
+
 export async function resetAllData(): Promise<void> {
   // db.delete() issues indexedDB.deleteDatabase(), which blocks until every
   // open connection closes. The singleton `db` above is still open on this

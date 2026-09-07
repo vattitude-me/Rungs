@@ -20,6 +20,7 @@
     "@capacitor/status-bar": "^8.0.3",
     "@tailwindcss/vite": "^4.3.3",
     "dexie": "^4.4.5",
+    "firebase": "^12.18.0",
     "lucide-react": "^1.39.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

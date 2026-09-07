@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, HardDrive, WifiOff, Share2, Trash2 } from 'lucide-react';
+import { ChevronLeft, HardDrive, WifiOff, Share2, Trash2, CloudOff } from 'lucide-react';
 import Button from '../components/Button';
 import ListRow from '../components/ListRow';
 import { resetAllData } from '../db';
+import { cloudConfigured } from '../cloud/config';
 
 const CONFIRM_PHRASE = 'DELETE';
 
@@ -29,7 +30,9 @@ export default function DataPrivacy() {
       <div className="flex flex-col gap-1.5">
         <div className="text-[22px] font-medium tracking-[-0.02em]">Your data stays on this phone</div>
         <div className="text-[13.5px] leading-[1.5] text-neutral-400">
-          Rungs has no server and no account. Everything you see here is the whole story.
+          {cloudConfigured
+            ? 'Nothing leaves this device unless you ask it to. Everything you see here is the whole story.'
+            : 'Rungs has no server and no account. Everything you see here is the whole story.'}
         </div>
       </div>
 
@@ -39,17 +42,26 @@ export default function DataPrivacy() {
           subtitle="Profile, baseline tests, set logs, streaks: all in this browser's local storage"
         />
         <ListRow
-          icon={<WifiOff size={14} />} title="Nothing sent anywhere"
-          subtitle="No analytics, no tracking, no network requests for your workout data"
+          icon={<WifiOff size={14} />} title="No tracking, ever"
+          subtitle="No analytics, no ads, no third-party trackers, no data sold or shared"
         />
-        <ListRow
-          icon={<Share2 size={14} />} title="Nothing shared with third parties"
-          subtitle="There is no one to share it with: no accounts, no ads, no backend"
-        />
+        {cloudConfigured ? (
+          <ListRow
+            icon={<CloudOff size={14} />} title="Backup only when you tap it"
+            subtitle="Nothing uploads automatically. Sign in and back up, and the copy is readable only by you"
+          />
+        ) : (
+          <ListRow
+            icon={<Share2 size={14} />} title="Nothing shared with third parties"
+            subtitle="There is no one to share it with: no accounts, no ads, no backend"
+          />
+        )}
       </div>
 
       <div className="text-[11.5px] leading-[1.5] text-neutral-500">
-        Uninstalling the app or clearing this browser's site data deletes it permanently. There's no cloud copy to restore from yet: accounts and sync are planned for a future update.
+        {cloudConfigured
+          ? "Uninstalling the app or clearing this browser's site data deletes the local copy permanently. If you've backed up, that copy lives under your Google account until you delete it - day-by-day set detail is kept for six months, while your daily totals, streak and max tests are kept in full."
+          : "Uninstalling the app or clearing this browser's site data deletes it permanently. There's no cloud copy to restore from yet: accounts and sync are planned for a future update."}
       </div>
 
       <div className="flex flex-col gap-1.75 mt-2">
