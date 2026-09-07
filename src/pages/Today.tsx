@@ -48,7 +48,7 @@ export default function Today() {
       const today = localDate();
       const dayIndex = dayIndexFor(p.createdAt, today);
       let dp = await generateDayPlan(today, dayIndex, p);
-      if (p.reflow) dp = await reflowMissedWindows(dp, today);
+      dp = await reflowMissedWindows(dp, today, p.reflow);
       if (cancelled) return;
       setPlan(dp);
 

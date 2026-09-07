@@ -75,11 +75,17 @@ async function resolveTier(profile: Profile, date: string): Promise<Profile['tie
 
 const MISS_GRACE_MINUTES = 20;
 
-/** Reflows any pending window whose time has passed (with a grace period)
- * into the remaining pending windows for the day, and persists the result.
- * Only meaningful for today's plan - a past day's unfinished windows should
- * stay as history, not get redistributed into a plan nobody will act on. */
-export async function reflowMissedWindows(plan: DayPlan, todayIso: string): Promise<DayPlan> {
+/** Marks any pending window whose time has passed (with a grace period) as
+ * missed, and persists the result. When `redistribute` is on, the missed
+ * reps get spread into the remaining pending windows for the day; either way
+ * the window stops showing as "up next" once its time has gone by. Only
+ * meaningful for today's plan - a past day's unfinished windows should stay
+ * as history, not get redistributed into a plan nobody will act on. */
+export async function reflowMissedWindows(
+  plan: DayPlan,
+  todayIso: string,
+  redistribute = true
+): Promise<DayPlan> {
   if (plan.date !== todayIso) return plan;
 
   const nowMin = nowMinutes();
@@ -91,7 +97,7 @@ export async function reflowMissedWindows(plan: DayPlan, todayIso: string): Prom
     if (!current || current.status !== 'pending') continue;
     const minutesPast = nowMin - timeToMinutes(current.at);
     if (minutesPast > MISS_GRACE_MINUTES) {
-      next = { ...next, windows: reflow(next.windows, current.id) };
+      next = { ...next, windows: reflow(next.windows, current.id, redistribute) };
       changed = true;
     }
   }

@@ -238,9 +238,11 @@ export function splitIntoWindows(
 
 const REFLOW_CAP = 0.4;
 
-/** Redistributes a missed window's reps across remaining pending windows,
- * capped at +40% of any window's original volume; overflow is dropped. */
-export function reflow(windows: Window[], missedWindowId: string): Window[] {
+/** Marks a missed window as such and, when `redistribute` is on, spreads its
+ * reps across remaining pending windows (capped at +40% of any window's
+ * original volume; overflow is dropped). With `redistribute` off, the window
+ * is still marked missed - the coach just doesn't reshuffle the day for it. */
+export function reflow(windows: Window[], missedWindowId: string, redistribute = true): Window[] {
   const missed = windows.find((w) => w.id === missedWindowId);
   if (!missed) return windows;
 
@@ -250,7 +252,7 @@ export function reflow(windows: Window[], missedWindowId: string): Window[] {
   }
 
   const pending = windows.filter((w) => w.id !== missedWindowId && w.status === 'pending');
-  if (pending.length === 0) {
+  if (!redistribute || pending.length === 0) {
     return windows.map((w) => (w.id === missedWindowId ? { ...w, status: 'missed' } : w));
   }
 
