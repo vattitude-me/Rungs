@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, CloudUpload, CloudDownload, LogOut, Trash2, ShieldCheck } from 'lucide-react';
 import Button from '../components/Button';
 import ListRow from '../components/ListRow';
@@ -34,6 +34,10 @@ function countReps(meta: BackupMeta): string {
 
 export default function Sync() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Reached from the welcome splash, "back" means the splash - not history,
+  // which may be empty on a cold start from a shared link.
+  const fromWelcome = (location.state as { from?: string } | null)?.from === 'welcome';
   const [account, setAccount] = useState<CloudAccount | null>(null);
   const [ready, setReady] = useState(false);
   const [meta, setMeta] = useState<BackupMeta | null>(null);
@@ -41,6 +45,7 @@ export default function Sync() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [conflict, setConflict] = useState<BackupMeta | null>(null);
 
   useEffect(() => {
     if (!cloudConfigured) { setReady(true); return; }
@@ -81,12 +86,20 @@ export default function Sync() {
     }
   };
 
-  const handleBackup = () => run('push', async () => {
+  const handleBackup = (force = false) => run('push', async () => {
     if (!account) return;
-    const { pushBackup } = await syncModule();
-    const next = await pushBackup(account.uid, __APP_VERSION__);
-    setMeta(next);
-    setNote('Backed up.');
+    const { pushBackup, ForeignBackupError } = await syncModule();
+    try {
+      const next = await pushBackup(account.uid, __APP_VERSION__, { force });
+      setMeta(next);
+      setConflict(null);
+      setNote('Backed up.');
+    } catch (e) {
+      // A backup written by another device isn't an error so much as a
+      // question, so it gets a choice rather than the red banner.
+      if (e instanceof ForeignBackupError) { setConflict(e.meta); return; }
+      throw e;
+    }
   });
 
   const handleRestore = () => run('pull', async () => {
@@ -94,6 +107,7 @@ export default function Sync() {
     const { pullBackup } = await syncModule();
     await pullBackup(account.uid);
     setConfirmRestore(false);
+    setConflict(null);
     // Restored rows replace everything the running app has already read into
     // memory, so reload rather than navigate - the same reason a full reset does.
     window.location.href = window.location.origin + window.location.pathname;
@@ -110,7 +124,12 @@ export default function Sync() {
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-6 gap-4">
       <div className="flex items-center gap-3">
-        <Button variant="icon" onClick={() => navigate(-1)}><ChevronLeft size={18} /></Button>
+        <Button
+          variant="icon"
+          onClick={() => (fromWelcome ? navigate('/onboarding/welcome') : navigate(-1))}
+        >
+          <ChevronLeft size={18} />
+        </Button>
         <div className="text-[15px] font-medium">Cloud backup</div>
       </div>
 
@@ -170,13 +189,41 @@ export default function Sync() {
                 <Button
                   variant="primary" block className="h-12 text-[15px]"
                   disabled={busy !== null}
-                  onClick={handleBackup}
+                  onClick={() => handleBackup()}
                 >
                   <span className="inline-flex items-center gap-2">
                     <CloudUpload size={16} />
                     {busy === 'push' ? 'Backing up…' : 'Back up now'}
                   </span>
                 </Button>
+
+                {conflict && (
+                  <div className="flex flex-col gap-2.5 px-3.5 py-3.5 rounded-[13px] bg-surface shadow-sm">
+                    <div className="text-[12.5px] leading-[1.5] text-neutral-400">
+                      This account was last backed up from{' '}
+                      <span className="text-text font-medium">{conflict.deviceLabel ?? 'another device'}</span>{' '}
+                      {describeWhen(conflict.updatedAt)} ({countReps(conflict)}). Backing
+                      up from here replaces that copy. If that phone is the one
+                      you've been using, restore instead.
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="secondary" className="flex-1"
+                        disabled={busy !== null}
+                        onClick={() => setConflict(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="danger" className="flex-1"
+                        disabled={busy !== null}
+                        onClick={() => handleBackup(true)}
+                      >
+                        {busy === 'push' ? 'Backing up…' : 'Replace it'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {meta && !confirmRestore && (
                   <Button

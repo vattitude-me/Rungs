@@ -3,6 +3,7 @@ import {
 } from 'firebase/firestore';
 import { cloudDb } from './firebase';
 import { stripUndefined } from './serialize';
+import { deviceId, deviceLabel } from './device';
 import { exportSnapshot, importSnapshot, type LocalSnapshot } from '../db';
 
 /** Tables backed up, in the order a restore should write them. */
@@ -57,6 +58,33 @@ export interface BackupMeta {
   updatedAt: number;
   appVersion: string;
   counts: Record<TableName, number>;
+  /** Which install wrote this backup, and what to call it. One account is meant
+   * to track one device at a time; these let us notice when that stops being
+   * true instead of silently letting two phones overwrite each other. */
+  deviceId?: string;
+  deviceLabel?: string;
+}
+
+/** Raised instead of overwriting a backup another device wrote. Carries the
+ * detail the UI needs to ask the user whether they meant to. */
+export class ForeignBackupError extends Error {
+  meta: BackupMeta;
+  constructor(meta: BackupMeta) {
+    super(
+      `This account was last backed up from ${meta.deviceLabel ?? 'another device'}. ` +
+      'Backing up from here replaces that copy.'
+    );
+    this.name = 'ForeignBackupError';
+    this.meta = meta;
+  }
+}
+
+/** True when the backup was written by a different install than this one. A
+ * backup with no recorded device predates this check; it's treated as ours
+ * rather than nagging every existing user once. */
+export function isForeignBackup(meta: BackupMeta | null): boolean {
+  if (!meta?.deviceId) return false;
+  return meta.deviceId !== deviceId();
 }
 
 function userRoot(uid: string) {
@@ -88,7 +116,19 @@ function chunk<T>(rows: T[], size: number): T[][] {
 /** Uploads this device's data as the account's backup, replacing whatever was
  * there. Old chunks are deleted rather than left behind: a backup taken after
  * deleting data must not be reconstructable from a previous, longer one. */
-export async function pushBackup(uid: string, appVersion: string): Promise<BackupMeta> {
+export async function pushBackup(
+  uid: string,
+  appVersion: string,
+  options: { force?: boolean } = {}
+): Promise<BackupMeta> {
+  // Check before writing anything: one account is meant to follow one device,
+  // so replacing a backup another phone made is a decision the user makes, not
+  // one a stray tap makes for them.
+  if (!options.force) {
+    const existing = await fetchBackupMeta(uid);
+    if (isForeignBackup(existing)) throw new ForeignBackupError(existing!);
+  }
+
   const snapshot = asRows(pruneForBackup(await exportSnapshot()));
   const db = cloudDb();
 
@@ -120,7 +160,10 @@ export async function pushBackup(uid: string, appVersion: string): Promise<Backu
     }
   }
 
-  const meta: BackupMeta = { updatedAt: Date.now(), appVersion, counts };
+  const meta: BackupMeta = {
+    updatedAt: Date.now(), appVersion, counts,
+    deviceId: deviceId(), deviceLabel: deviceLabel(),
+  };
   // Written last: its presence is what marks a backup complete, so a run that
   // dies partway never advertises itself as restorable.
   await setDoc(userRoot(uid), { ...meta, syncedAt: serverTimestamp() });
@@ -134,7 +177,13 @@ export async function fetchBackupMeta(uid: string): Promise<BackupMeta | null> {
   if (!snap.exists()) return null;
   const data = snap.data();
   if (!data?.counts) return null;
-  return { updatedAt: data.updatedAt ?? 0, appVersion: data.appVersion ?? '', counts: data.counts };
+  return {
+    updatedAt: data.updatedAt ?? 0,
+    appVersion: data.appVersion ?? '',
+    counts: data.counts,
+    deviceId: data.deviceId,
+    deviceLabel: data.deviceLabel,
+  };
 }
 
 /** Replaces this device's data with the account's backup. */
@@ -163,6 +212,21 @@ export async function pullBackup(uid: string): Promise<LocalSnapshot> {
 
   const snapshot = restored as unknown as LocalSnapshot;
   await importSnapshot(snapshot);
+
+  // Restoring is how a user moves to a new phone, so this device becomes the
+  // account's device. Without this the machine that just restored would be
+  // warned as a stranger the first time it backed up. Best-effort: the restore
+  // itself already succeeded, and failing here must not report it as failed.
+  try {
+    await setDoc(
+      userRoot(uid),
+      { deviceId: deviceId(), deviceLabel: deviceLabel() },
+      { merge: true }
+    );
+  } catch {
+    // Ignored: worst case the user confirms one "another device" prompt.
+  }
+
   return snapshot;
 }
 

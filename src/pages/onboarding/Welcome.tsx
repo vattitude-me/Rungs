@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Button from '../../components/Button';
 import Tag from '../../components/Tag';
 import { EXERCISE_REFERENCE } from '../../data/exerciseReference';
+import { cloudConfigured } from '../../cloud/config';
 import type { Exercise } from '../../types';
 
 const HERO_CYCLE: Exercise[] = ['push', 'pull', 'squat'];
@@ -62,6 +63,17 @@ export default function Welcome() {
         >
           Find my starting point
         </Button>
+        {/* Returning users are the minority here, so restore is a quiet link
+            rather than a second button competing with the primary path. */}
+        {cloudConfigured && (
+          <button
+            type="button"
+            onClick={() => navigate('/settings/sync', { state: { from: 'welcome' } })}
+            className="text-[12.5px] text-neutral-400 hover:text-text underline underline-offset-2 decoration-neutral-700 py-1.5"
+          >
+            Already have a backup? Restore it
+          </button>
+        )}
         <div className="flex justify-center gap-2 mt-1.5">
           <Tag variant="neutral">Free forever</Tag>
           <Tag variant="neutral">Works offline</Tag>
