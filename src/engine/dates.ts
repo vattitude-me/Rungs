@@ -20,6 +20,14 @@ export function parseLocalDate(iso: string): Date {
   return new Date(y, m - 1, d);
 }
 
+/** The local calendar date `days` after `iso`. Goes through a local Date so a
+ * DST boundary in between still lands on the right calendar day. */
+export function addDays(iso: string, days: number): string {
+  const d = parseLocalDate(iso);
+  d.setDate(d.getDate() + days);
+  return localDate(d);
+}
+
 /** Whole local calendar days between two YYYY-MM-DD strings. DST-safe: both
  * sides are normalised to local midnight before differencing, and the result
  * is rounded so a 23- or 25-hour day still counts as exactly one. */

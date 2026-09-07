@@ -84,7 +84,7 @@ export default function Settings() {
     if (!profile) return;
     const today = localDate();
     const plan = await generateDayPlan(today, dayIndexFor(profile.createdAt, today), profile);
-    if (turningOn) await scheduleWindowReminders(plan);
+    if (turningOn) await scheduleWindowReminders(plan, profile);
     else await cancelWindowReminders(plan);
   };
 
