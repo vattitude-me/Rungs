@@ -6,6 +6,7 @@ import FillBar from '../components/FillBar';
 import LitCard from '../components/LitCard';
 import Button from '../components/Button';
 import { TimelineRow, type TimelineDotState } from '../components/Timeline';
+import CloudCard from '../components/CloudCard';
 import { getProfile, getSettings, getSetLogs } from '../db';
 import { generateDayPlan, reflowMissedWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor } from '../engine/dates';
@@ -138,6 +139,8 @@ export default function Today() {
           <CircleUser size={19} strokeWidth={1.8} />
         </button>
       </div>
+
+      <CloudCard />
 
       {retestDue && (
         <button

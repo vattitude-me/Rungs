@@ -23,6 +23,7 @@ import Settings from './pages/Settings';
 import DataPrivacy from './pages/DataPrivacy';
 import Retest from './pages/Retest';
 import Sync from './pages/Sync';
+import { CloudSyncProvider } from './hooks/useCloudSync';
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
@@ -61,29 +62,31 @@ export default function App() {
   const needsOnboarding = !profile || !profile.onboardingComplete;
 
   return (
-    <PhoneFrame>
-      <Routes>
-        <Route path="/onboarding/welcome" element={<Welcome />} />
-        <Route path="/onboarding/name" element={<Name />} />
-        <Route path="/onboarding/baseline" element={<Baseline />} />
-        <Route path="/onboarding/schedule" element={<Schedule />} />
-        <Route path="/onboarding/plan" element={<PlanPreview />} />
-        <Route path="/session" element={<Session />} />
-        <Route path="/session/log" element={<LogReps />} />
-        <Route path="/settings/privacy" element={<DataPrivacy />} />
-        <Route path="/settings/retest" element={<Retest />} />
-        <Route path="/settings/sync" element={<Sync />} />
-        <Route element={<Layout />}>
-          <Route path="/today" element={<Today />} />
-          <Route path="/progress" element={<Progress />} />
-          <Route path="/squad" element={<Squad />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-        <Route
-          path="*"
-          element={needsOnboarding ? <Navigate to="/onboarding/welcome" replace /> : <Navigate to="/today" replace />}
-        />
-      </Routes>
-    </PhoneFrame>
+    <CloudSyncProvider>
+      <PhoneFrame>
+        <Routes>
+          <Route path="/onboarding/welcome" element={<Welcome />} />
+          <Route path="/onboarding/name" element={<Name />} />
+          <Route path="/onboarding/baseline" element={<Baseline />} />
+          <Route path="/onboarding/schedule" element={<Schedule />} />
+          <Route path="/onboarding/plan" element={<PlanPreview />} />
+          <Route path="/session" element={<Session />} />
+          <Route path="/session/log" element={<LogReps />} />
+          <Route path="/settings/privacy" element={<DataPrivacy />} />
+          <Route path="/settings/retest" element={<Retest />} />
+          <Route path="/settings/sync" element={<Sync />} />
+          <Route element={<Layout />}>
+            <Route path="/today" element={<Today />} />
+            <Route path="/progress" element={<Progress />} />
+            <Route path="/squad" element={<Squad />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+          <Route
+            path="*"
+            element={needsOnboarding ? <Navigate to="/onboarding/welcome" replace /> : <Navigate to="/today" replace />}
+          />
+        </Routes>
+      </PhoneFrame>
+    </CloudSyncProvider>
   );
 }

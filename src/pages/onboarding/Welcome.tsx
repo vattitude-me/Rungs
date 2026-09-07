@@ -63,15 +63,17 @@ export default function Welcome() {
         >
           Find my starting point
         </Button>
-        {/* Returning users are the minority here, so restore is a quiet link
-            rather than a second button competing with the primary path. */}
+        {/* Returning users are the minority here, so signing in is a quiet
+            link rather than a second button competing with the primary path.
+            Signing in restores everything on its own, so there's no separate
+            "restore" step to explain. */}
         {cloudConfigured && (
           <button
             type="button"
             onClick={() => navigate('/settings/sync', { state: { from: 'welcome' } })}
             className="text-[12.5px] text-neutral-400 hover:text-text underline underline-offset-2 decoration-neutral-700 py-1.5"
           >
-            Already have a backup? Restore it
+            Already have an account? Sign in
           </button>
         )}
         <div className="flex justify-center gap-2 mt-1.5">

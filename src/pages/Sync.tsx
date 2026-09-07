@@ -1,19 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, CloudUpload, CloudDownload, LogOut, Trash2, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, LogOut, Trash2, ShieldCheck, RefreshCw } from 'lucide-react';
 import Button from '../components/Button';
 import ListRow from '../components/ListRow';
 import { cloudConfigured } from '../cloud/config';
-import type { CloudAccount } from '../cloud/auth';
+import { useCloudSync } from '../hooks/useCloudSync';
 import type { BackupMeta } from '../cloud/sync';
 
-// The Firebase SDK is ~500 KB and only this screen needs it, so it's pulled in
-// on demand rather than shipped in the bundle every user downloads to open
-// Today. Type-only imports above are erased at build time and cost nothing.
-const authModule = () => import('../cloud/auth');
 const syncModule = () => import('../cloud/sync');
-
-type Busy = 'push' | 'pull' | 'signin' | 'delete' | null;
 
 function describeWhen(ms: number): string {
   if (!ms) return 'never';
@@ -36,30 +30,14 @@ export default function Sync() {
   const navigate = useNavigate();
   const location = useLocation();
   // Reached from the welcome splash, "back" means the splash - not history,
-  // which may be empty on a cold start from a shared link.
+  // which may be empty on a cold start.
   const fromWelcome = (location.state as { from?: string } | null)?.from === 'welcome';
-  const [account, setAccount] = useState<CloudAccount | null>(null);
-  const [ready, setReady] = useState(false);
+
+  const { account, state, signIn, signOut, syncNow } = useCloudSync();
   const [meta, setMeta] = useState<BackupMeta | null>(null);
-  const [busy, setBusy] = useState<Busy>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [confirmRestore, setConfirmRestore] = useState(false);
-  const [conflict, setConflict] = useState<BackupMeta | null>(null);
-
-  useEffect(() => {
-    if (!cloudConfigured) { setReady(true); return; }
-    let stop: (() => void) | undefined;
-    let cancelled = false;
-    void authModule().then(async (m) => {
-      // A native sign-in comes back through a redirect, so this load may be the
-      // return leg; failures are surfaced but don't block the page.
-      await m.resumeSignIn().catch((e: Error) => setError(e.message));
-      if (cancelled) return;
-      stop = m.watchAccount((next) => { setAccount(next); setReady(true); });
-    });
-    return () => { cancelled = true; stop?.(); };
-  }, []);
 
   const refreshMeta = useCallback(async (uid: string) => {
     try {
@@ -73,53 +51,22 @@ export default function Sync() {
   useEffect(() => {
     if (account) void refreshMeta(account.uid);
     else setMeta(null);
-  }, [account, refreshMeta]);
+  }, [account, state, refreshMeta]);
 
-  const run = async (kind: Busy, fn: () => Promise<void>) => {
-    setBusy(kind); setError(null); setNote(null);
+  const handleDeleteBackup = async () => {
+    if (!account) return;
+    setBusy(true); setError(null); setNote(null);
     try {
-      await fn();
+      const { deleteBackup } = await syncModule();
+      await deleteBackup(account.uid);
+      setMeta(null);
+      setNote('Cloud copy deleted. Nothing on this device changed.');
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
-
-  const handleBackup = (force = false) => run('push', async () => {
-    if (!account) return;
-    const { pushBackup, ForeignBackupError } = await syncModule();
-    try {
-      const next = await pushBackup(account.uid, __APP_VERSION__, { force });
-      setMeta(next);
-      setConflict(null);
-      setNote('Backed up.');
-    } catch (e) {
-      // A backup written by another device isn't an error so much as a
-      // question, so it gets a choice rather than the red banner.
-      if (e instanceof ForeignBackupError) { setConflict(e.meta); return; }
-      throw e;
-    }
-  });
-
-  const handleRestore = () => run('pull', async () => {
-    if (!account) return;
-    const { pullBackup } = await syncModule();
-    await pullBackup(account.uid);
-    setConfirmRestore(false);
-    setConflict(null);
-    // Restored rows replace everything the running app has already read into
-    // memory, so reload rather than navigate - the same reason a full reset does.
-    window.location.href = window.location.origin + window.location.pathname;
-  });
-
-  const handleDeleteBackup = () => run('delete', async () => {
-    if (!account) return;
-    const { deleteBackup } = await syncModule();
-    await deleteBackup(account.uid);
-    setMeta(null);
-    setNote('Cloud backup deleted. Nothing on this device changed.');
-  });
 
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-6 gap-4">
@@ -130,7 +77,7 @@ export default function Sync() {
         >
           <ChevronLeft size={18} />
         </Button>
-        <div className="text-[15px] font-medium">Cloud backup</div>
+        <div className="text-[15px] font-medium">Account</div>
       </div>
 
       {!cloudConfigured ? (
@@ -145,12 +92,12 @@ export default function Sync() {
         <>
           <div className="flex flex-col gap-1.5">
             <div className="text-[22px] font-medium tracking-[-0.02em]">
-              {account ? 'Your history, saved off this phone' : 'Keep your history safe'}
+              {account ? 'Signed in' : 'Keep your history safe'}
             </div>
             <div className="text-[13.5px] leading-[1.5] text-neutral-400">
               {account
-                ? 'Back up when you want a copy, restore to move to a new device. Nothing uploads on its own.'
-                : 'Sign in to store a copy of your reps, streak and settings, so a lost phone doesn’t mean starting over.'}
+                ? 'Your reps back up on their own as you log them, and come back automatically when you sign in on a new device.'
+                : 'Sign in and your reps back up as you go. Sign in on a new phone and everything comes back — name, schedule and streak included.'}
             </div>
           </div>
 
@@ -165,13 +112,13 @@ export default function Sync() {
             </div>
           )}
 
-          {!ready ? null : !account ? (
+          {account === undefined ? null : !account ? (
             <Button
               variant="primary" block className="h-12 text-[15px]"
-              disabled={busy === 'signin'}
-              onClick={() => run('signin', async () => { await (await authModule()).signIn(); })}
+              disabled={state.status === 'syncing'}
+              onClick={() => void signIn()}
             >
-              {busy === 'signin' ? 'Opening sign-in…' : 'Sign in with Google'}
+              {state.status === 'syncing' ? 'Opening sign-in…' : 'Continue with Google'}
             </Button>
           ) : (
             <>
@@ -180,89 +127,21 @@ export default function Sync() {
                   isFirst icon={<ShieldCheck size={14} />}
                   title={account.email ?? account.displayName ?? 'Signed in'}
                   subtitle={meta
-                    ? `Last backup ${describeWhen(meta.updatedAt)} · ${countReps(meta)}`
-                    : 'No backup on this account yet'}
+                    ? `Last saved ${describeWhen(meta.updatedAt)} · ${countReps(meta)}`
+                    : 'Nothing saved yet'}
                 />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Button
-                  variant="primary" block className="h-12 text-[15px]"
-                  disabled={busy !== null}
-                  onClick={() => handleBackup()}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <CloudUpload size={16} />
-                    {busy === 'push' ? 'Backing up…' : 'Back up now'}
-                  </span>
-                </Button>
-
-                {conflict && (
-                  <div className="flex flex-col gap-2.5 px-3.5 py-3.5 rounded-[13px] bg-surface shadow-sm">
-                    <div className="text-[12.5px] leading-[1.5] text-neutral-400">
-                      This account was last backed up from{' '}
-                      <span className="text-text font-medium">{conflict.deviceLabel ?? 'another device'}</span>{' '}
-                      {describeWhen(conflict.updatedAt)} ({countReps(conflict)}). Backing
-                      up from here replaces that copy. If that phone is the one
-                      you've been using, restore instead.
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="secondary" className="flex-1"
-                        disabled={busy !== null}
-                        onClick={() => setConflict(null)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="danger" className="flex-1"
-                        disabled={busy !== null}
-                        onClick={() => handleBackup(true)}
-                      >
-                        {busy === 'push' ? 'Backing up…' : 'Replace it'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {meta && !confirmRestore && (
-                  <Button
-                    variant="secondary" block className="h-12 text-[15px]"
-                    disabled={busy !== null}
-                    onClick={() => { setConfirmRestore(true); setError(null); setNote(null); }}
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <CloudDownload size={16} />
-                      Restore from backup
-                    </span>
-                  </Button>
-                )}
-
-                {meta && confirmRestore && (
-                  <div className="flex flex-col gap-2.5 px-3.5 py-3.5 rounded-[13px] bg-surface shadow-sm">
-                    <div className="text-[12.5px] leading-[1.5] text-neutral-400">
-                      This replaces everything on this device with the backup from{' '}
-                      <span className="text-text font-medium">{describeWhen(meta.updatedAt)}</span>{' '}
-                      ({countReps(meta)}). Anything logged here since then is lost.
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="secondary" className="flex-1"
-                        disabled={busy !== null}
-                        onClick={() => setConfirmRestore(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="danger" className="flex-1"
-                        disabled={busy !== null}
-                        onClick={handleRestore}
-                      >
-                        {busy === 'pull' ? 'Restoring…' : 'Replace my data'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                <ListRow
+                  icon={<RefreshCw size={14} />}
+                  title="Sync now"
+                  subtitle={
+                    state.status === 'syncing' ? 'Saving…'
+                    : state.status === 'offline' ? 'Offline — will save when you reconnect'
+                    : state.status === 'error' ? state.message
+                    : 'Happens automatically; this forces it'
+                  }
+                  onClick={state.status === 'syncing' ? undefined : () => void syncNow()}
+                  trailing={<span className="text-[13px] text-neutral-600">›</span>}
+                />
               </div>
 
               <div className="flex flex-col gap-1.75 mt-1">
@@ -271,16 +150,14 @@ export default function Sync() {
                   <ListRow
                     isFirst icon={<LogOut size={14} />} title="Sign out"
                     subtitle="Your data stays on this device"
-                    onClick={busy ? undefined : () => run('signin', async () => {
-                      await (await authModule()).signOut();
-                    })}
+                    onClick={busy ? undefined : () => void signOut()}
                     trailing={<span className="text-[13px] text-neutral-600">›</span>}
                   />
                   {meta && (
                     <ListRow
-                      icon={<Trash2 size={14} />} title="Delete cloud backup"
-                      subtitle="Removes the copy stored online, keeps this device's data"
-                      onClick={busy ? undefined : handleDeleteBackup}
+                      icon={<Trash2 size={14} />} title="Delete cloud copy"
+                      subtitle="Removes what's stored online, keeps this device's data"
+                      onClick={busy ? undefined : () => void handleDeleteBackup()}
                       trailing={<span className="text-[13px] text-neutral-600">›</span>}
                     />
                   )}
@@ -288,9 +165,9 @@ export default function Sync() {
               </div>
 
               <div className="text-[11.5px] leading-[1.5] text-neutral-500">
-                Backups are stored under your Google account and readable only by
-                you. Rungs still works entirely offline; this is a copy, not a
-                requirement.
+                Your backup is stored under your Google account and readable only
+                by you. Rungs still works entirely offline; syncing catches up
+                once you're back on a connection.
               </div>
             </>
           )}

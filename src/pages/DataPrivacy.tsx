@@ -47,8 +47,8 @@ export default function DataPrivacy() {
         />
         {cloudConfigured ? (
           <ListRow
-            icon={<CloudOff size={14} />} title="Backup only when you tap it"
-            subtitle="Nothing uploads automatically. Sign in and back up, and the copy is readable only by you"
+            icon={<CloudOff size={14} />} title="Uploads only if you sign in"
+            subtitle="Signed out, nothing leaves this device. Signed in, your reps back up as you log them, readable only by you"
           />
         ) : (
           <ListRow

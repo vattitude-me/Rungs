@@ -2,6 +2,7 @@ import Dexie, { type Table } from 'dexie';
 import type {
   Profile, BaselineLog, DayPlan, SetLog, DayRecord, AppSettings, StreakData,
 } from '../types';
+import { markChanged, resetChangeMarks } from './changes';
 
 class RungsDB extends Dexie {
   profile!: Table<Profile, string>;
@@ -107,6 +108,7 @@ export async function getProfile(): Promise<Profile | undefined> {
 
 export async function saveProfile(profile: Profile): Promise<void> {
   await db.profile.put(profile);
+  markChanged();
 }
 
 export async function getBaselineLogs(): Promise<BaselineLog[]> {
@@ -115,6 +117,7 @@ export async function getBaselineLogs(): Promise<BaselineLog[]> {
 
 export async function saveBaselineLog(log: BaselineLog): Promise<void> {
   await db.baselineLogs.put(log);
+  markChanged();
 }
 
 export async function getDayPlan(date: string): Promise<DayPlan | undefined> {
@@ -123,6 +126,7 @@ export async function getDayPlan(date: string): Promise<DayPlan | undefined> {
 
 export async function saveDayPlan(plan: DayPlan): Promise<void> {
   await db.dayPlans.put(plan);
+  markChanged();
 }
 
 export async function getSetLogs(date: string): Promise<SetLog[]> {
@@ -135,6 +139,7 @@ export async function getAllSetLogs(): Promise<SetLog[]> {
 
 export async function saveSetLog(log: SetLog): Promise<void> {
   await db.setLogs.put(log);
+  markChanged();
 }
 
 export async function getDayRecord(date: string): Promise<DayRecord | undefined> {
@@ -143,6 +148,7 @@ export async function getDayRecord(date: string): Promise<DayRecord | undefined>
 
 export async function saveDayRecord(record: DayRecord): Promise<void> {
   await db.dayRecords.put(record);
+  markChanged();
 }
 
 export async function getAllDayRecords(): Promise<DayRecord[]> {
@@ -156,6 +162,7 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await db.settings.put({ ...settings, id: SINGLETON_ID });
+  markChanged();
 }
 
 export async function getStreak(): Promise<StreakData> {
@@ -165,6 +172,7 @@ export async function getStreak(): Promise<StreakData> {
 
 export async function saveStreak(streak: StreakData): Promise<void> {
   await db.streaks.put({ ...streak, id: SINGLETON_ID });
+  markChanged();
 }
 
 /** Everything this install holds, in one plain object - the unit that gets
@@ -229,4 +237,8 @@ export async function resetAllData(): Promise<void> {
   // leaving stale data in place while the UI thinks it succeeded.
   db.close();
   await db.delete();
+  // Drop the sync clock too. Left behind, it would tell the next sign-in that
+  // this device has unsynced work, and a device with no data claiming to be
+  // dirty is exactly the state that reads as a conflict.
+  resetChangeMarks();
 }
