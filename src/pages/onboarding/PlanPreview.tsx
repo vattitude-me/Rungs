@@ -89,7 +89,7 @@ export default function PlanPreview() {
         const settings = await getSettings();
         await saveSettings({ ...settings, reminders: true });
         const plan = await generateDayPlan(today, dayIndexFor(profile.createdAt, today), profile);
-        await scheduleWindowReminders(plan);
+        await scheduleWindowReminders(plan, profile);
       }
     }
 

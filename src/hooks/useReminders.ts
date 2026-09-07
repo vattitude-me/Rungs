@@ -33,7 +33,7 @@ export function useReminders() {
 
       if (isNative()) {
         // Hand the whole day to the OS; it will fire them without us.
-        await scheduleWindowReminders(plan);
+        await scheduleWindowReminders(plan, profile);
         return;
       }
 

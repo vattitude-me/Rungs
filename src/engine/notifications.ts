@@ -1,20 +1,82 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import type { DayPlan } from '../types';
+import { computeTierTargets, splitIntoWindows } from './coach';
+import { parseLocalDate, addDays } from './dates';
+import type { DayPlan, Profile, Window } from '../types';
 import { EXERCISE_LABELS } from '../types';
 
 const CHANNEL_ID = 'windows';
 const LEAD_MINUTES = 5;
 
-/** Notification ids are derived from the window so re-scheduling replaces
- * rather than duplicates. Kept well inside Android's 32-bit id range. */
-function notificationId(date: string, windowId: string): number {
-  const key = `${date}-${windowId}`;
+/** Days beyond today handed to the OS up front. Scheduling only ever happens
+ * while the app is open, so without a look-ahead a day the user never opens
+ * the app gets no reminders at all - exactly the day a nudge matters most. */
+const LOOK_AHEAD_DAYS = 7;
+
+/** Slots swept when clearing a day. Comfortably above any real window count,
+ * so a day that shrank still has its leftovers cancelled. */
+const MAX_SLOTS_PER_DAY = 12;
+
+/** iOS keeps only the 64 soonest pending local notifications per app and
+ * silently drops the rest, so stay under that with room to spare. */
+const MAX_PENDING = 60;
+
+/** Notification ids are derived from the day and the window's slot, so
+ * re-scheduling replaces rather than duplicates. Kept well inside Android's
+ * 32-bit id range. */
+function notificationId(date: string, key: string): number {
+  const full = `${date}-${key}`;
   let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  for (let i = 0; i < full.length; i++) {
+    hash = (hash * 31 + full.charCodeAt(i)) | 0;
   }
   return Math.abs(hash) % 2_000_000;
+}
+
+function bodyFor(w: Window): string {
+  return w.items
+    .map((it) => `${it.reps} ${EXERCISE_LABELS[it.exercise].toLowerCase()}`)
+    .join(' + ') || 'Time for a set';
+}
+
+/** The windows a future day would be built with.
+ *
+ * Deliberately pure: it does NOT call generateDayPlan, which persists the plan
+ * and can advance the tier. Generating a future day would both cache a plan
+ * built from today's tier (getDayPlan returns it unchanged when that day
+ * arrives) and stamp tierStartedAt with a future date. These projections are
+ * only ever used for reminder text - the real plan replaces them the moment
+ * the user opens the app that day. */
+function projectedWindows(profile: Profile): Window[] {
+  const targets = computeTierTargets(profile.maxes, profile.tier ?? 100);
+  const count = profile.windowTimes?.length || profile.windowCount || 4;
+  return splitIntoWindows(targets, count, profile.wake, profile.sleep, profile.windowTimes);
+}
+
+/** Every date this module schedules into, today first. */
+function scheduledDates(from: string): string[] {
+  const dates = [from];
+  for (let i = 1; i <= LOOK_AHEAD_DAYS; i++) dates.push(addDays(from, i));
+  return dates;
+}
+
+/** Clears every id this module could have used across the scheduled range -
+ * both the current slot ids and the window-id scheme used before the
+ * look-ahead existed, so upgrades don't strand old notifications. */
+async function clearScheduled(plan: DayPlan): Promise<void> {
+  const ids: { id: number }[] = [];
+  for (const date of scheduledDates(plan.date)) {
+    for (let slot = 0; slot < MAX_SLOTS_PER_DAY; slot++) {
+      ids.push({ id: notificationId(date, `slot-${slot}`) });
+    }
+  }
+  for (const w of plan.windows) ids.push({ id: notificationId(plan.date, w.id) });
+
+  try {
+    await LocalNotifications.cancel({ notifications: ids });
+  } catch {
+    // Nothing scheduled yet.
+  }
 }
 
 export function isNative(): boolean {
@@ -59,48 +121,57 @@ export async function hasNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Schedules a real OS notification ~5 minutes before each pending window.
+ * Schedules a real OS notification ~5 minutes before each upcoming window,
+ * for today and the next week.
  *
  * This is the important difference from the web path: these fire even when the
- * app is closed, which is the whole point of a reminder. Already-past windows
- * are skipped, and every call clears the day's previous schedule first so
- * edited window times don't leave stale notifications behind.
+ * app is closed, which is the whole point of a reminder. Today comes from the
+ * real plan; later days are projected from the profile so the user still gets
+ * nudged on a day they never open the app. Every call clears the whole range
+ * first, so edited window times and completed windows don't leave stale
+ * notifications behind.
  */
-export async function scheduleWindowReminders(plan: DayPlan): Promise<void> {
+export async function scheduleWindowReminders(plan: DayPlan, profile: Profile): Promise<void> {
   if (!isNative()) return;
   if (!(await hasNotificationPermission())) return;
 
-  const ids = plan.windows.map((w) => ({ id: notificationId(plan.date, w.id) }));
-  try {
-    await LocalNotifications.cancel({ notifications: ids });
-  } catch {
-    // Nothing scheduled yet.
-  }
+  await clearScheduled(plan);
 
   const now = Date.now();
-  const notifications = plan.windows
-    .filter((w) => w.status === 'pending' || w.status === 'reflowed')
-    .map((w) => {
+  const pending: {
+    id: number; title: string; body: string;
+    schedule: { at: Date }; channelId: string;
+  }[] = [];
+
+  for (const date of scheduledDates(plan.date)) {
+    // Index against the unfiltered list so a window's id stays stable as the
+    // day's earlier windows get completed and drop out.
+    const windows = date === plan.date
+      ? plan.windows.map((w, slot) => ({ w, slot }))
+        .filter(({ w }) => w.status === 'pending' || w.status === 'reflowed')
+      : projectedWindows(profile).map((w, slot) => ({ w, slot }));
+
+    for (const { w, slot } of windows) {
       const [h, m] = w.at.split(':').map(Number);
-      const at = new Date(plan.date);
+      const at = parseLocalDate(date);
       at.setHours(h, m - LEAD_MINUTES, 0, 0);
-      return { window: w, at };
-    })
-    .filter(({ at }) => at.getTime() > now)
-    .map(({ window: w, at }) => {
-      const body = w.items
-        .map((it) => `${it.reps} ${EXERCISE_LABELS[it.exercise].toLowerCase()}`)
-        .join(' + ');
-      return {
-        id: notificationId(plan.date, w.id),
+      if (at.getTime() <= now) continue;
+
+      pending.push({
+        id: notificationId(date, `slot-${slot}`),
         title: `Window at ${w.at}`,
-        body: body || 'Time for a set',
+        body: bodyFor(w),
         schedule: { at },
         channelId: CHANNEL_ID,
-      };
-    });
+      });
+    }
+  }
 
-  if (notifications.length === 0) return;
+  if (pending.length === 0) return;
+  const notifications = pending
+    .sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime())
+    .slice(0, MAX_PENDING);
+
   try {
     await LocalNotifications.schedule({ notifications });
   } catch {
@@ -108,14 +179,9 @@ export async function scheduleWindowReminders(plan: DayPlan): Promise<void> {
   }
 }
 
-/** Cancels every reminder for a day - used when the user turns reminders off. */
+/** Cancels every reminder across the scheduled range - used when the user
+ * turns reminders off. */
 export async function cancelWindowReminders(plan: DayPlan): Promise<void> {
   if (!isNative()) return;
-  try {
-    await LocalNotifications.cancel({
-      notifications: plan.windows.map((w) => ({ id: notificationId(plan.date, w.id) })),
-    });
-  } catch {
-    // Nothing scheduled.
-  }
+  await clearScheduled(plan);
 }
