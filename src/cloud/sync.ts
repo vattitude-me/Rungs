@@ -2,6 +2,7 @@ import {
   doc, getDoc, getDocs, setDoc, deleteDoc, collection, writeBatch, serverTimestamp,
 } from 'firebase/firestore';
 import { cloudDb } from './firebase';
+import { stripUndefined } from './serialize';
 import { exportSnapshot, importSnapshot, type LocalSnapshot } from '../db';
 
 /** Tables backed up, in the order a restore should write them. */
@@ -111,7 +112,9 @@ export async function pushBackup(uid: string, appVersion: string): Promise<Backu
       const batch = writeBatch(db);
       for (const [offset, part] of parts.slice(i, i + 100).entries()) {
         const index = i + offset;
-        batch.set(doc(chunksRef(uid, table), String(index).padStart(5, '0')), { rows: part });
+        batch.set(doc(chunksRef(uid, table), String(index).padStart(5, '0')), {
+          rows: part.map(stripUndefined),
+        });
       }
       await batch.commit();
     }
