@@ -1,11 +1,10 @@
 {
   "name": "rungs",
   "private": true,
-  "version": "1.0.21",
+  "version": "1.3.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/bump-version.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
