@@ -29,7 +29,6 @@ export interface Profile {
    * instead of spacing windows evenly across the waking span. Optional so
    * profiles saved before this existed still load. */
   windowTimes?: string[];
-  reflow: boolean;
   onboardingComplete: boolean;
   baselineComplete: boolean;
   lastRebaselineAt?: string; // ISO date

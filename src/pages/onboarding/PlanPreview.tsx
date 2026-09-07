@@ -17,7 +17,6 @@ const notificationsSupported = isNative() || (typeof window !== 'undefined' && '
 interface OnboardingState {
   name?: string;
   windows?: string[];
-  reflow?: boolean;
   barAccess?: BarAccess;
   pullRung?: PullRung;
   rowEquipment?: RowEquipment;
@@ -69,7 +68,6 @@ export default function PlanPreview() {
       // Keep the times the user actually picked on the schedule screen, so the
       // generated day matches the preview instead of being re-spaced from wake.
       windowTimes: state.windows,
-      reflow: state.reflow ?? true,
       onboardingComplete: true,
       baselineComplete: true,
       tier: FIRST_TIER,

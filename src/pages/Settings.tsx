@@ -1,22 +1,40 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Mic, Timer, Vibrate, Bell, Lock, Info, ChevronDown,
+  Mic, Timer, Vibrate, Bell, Lock, Info, ChevronDown, Clock, Minus, Plus,
   UserPlus, Users, Sparkles, Cloud, Camera, Watch, Trophy,
 } from 'lucide-react';
 import Button from '../components/Button';
 import Toggle from '../components/Toggle';
 import ListRow from '../components/ListRow';
-import { getProfile, saveProfile, getSettings, saveSettings } from '../db';
+import { getProfile, saveProfile, getSettings, saveSettings, getDayPlan } from '../db';
 import {
   isNative, requestNotificationPermission, hasNotificationPermission,
   scheduleWindowReminders, cancelWindowReminders,
 } from '../engine/notifications';
-import { generateDayPlan } from '../engine/planGenerator';
+import { generateDayPlan, rebuildTodayWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor } from '../engine/dates';
 import type { Profile, AppSettings } from '../types';
 
 type NotifState = 'granted' | 'denied' | 'unsupported';
+
+const MIN_WINDOWS = 2;
+const MAX_WINDOWS = 6;
+
+/** Fallback schedule for a profile saved before window times were stored. */
+const FALLBACK_TIMES = ['10:00', '13:00', '16:00', '19:00'];
+
+/** Spreads `count` windows evenly between 09:00 and 19:00, used when the user
+ * adds or removes a window rather than editing one by hand. */
+function evenTimes(count: number): string[] {
+  const start = 9 * 60;
+  const end = 19 * 60;
+  const step = count > 1 ? (end - start) / (count - 1) : 0;
+  return Array.from({ length: count }, (_, i) => {
+    const m = Math.round(start + step * i);
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  });
+}
 
 const UPCOMING_FEATURES = [
   { icon: Cloud, title: 'Accounts & sync', subtitle: 'Sign in, merge history across devices' },
@@ -35,6 +53,8 @@ export default function Settings() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [upcomingOpen, setUpcomingOpen] = useState(false);
+  const [editingWindow, setEditingWindow] = useState<number | null>(null);
+  const [windowDraft, setWindowDraft] = useState('');
   const [notifPermission, setNotifPermission] = useState<NotifState>(
     isNative() || 'Notification' in window ? 'denied' : 'unsupported'
   );
@@ -50,6 +70,7 @@ export default function Settings() {
   if (!profile || !settings) return null;
 
   const initial = (profile.name.trim()[0] || 'A').toUpperCase();
+  const windowTimes = profile.windowTimes?.length ? profile.windowTimes : FALLBACK_TIMES;
 
   const saveName = async () => {
     const n = nameDraft.trim().slice(0, 24);
@@ -57,6 +78,38 @@ export default function Settings() {
     setProfile(next);
     await saveProfile(next);
     setEditingName(false);
+  };
+
+  /** Persists a new schedule and re-cuts what's left of today onto it, so the
+   * change is visible now rather than only tomorrow. */
+  const applyWindowTimes = async (times: string[]) => {
+    if (!profile) return;
+    const sorted = [...times].sort((a, b) => a.localeCompare(b));
+    const next = { ...profile, windowTimes: sorted, windowCount: sorted.length };
+    setProfile(next);
+    await saveProfile(next);
+
+    const today = localDate();
+    const plan = await getDayPlan(today);
+    if (!plan) return;
+    // Rebuilt windows get fresh ids, so drop the reminders keyed to the old
+    // ones before they're orphaned, then re-arm from the new schedule.
+    await cancelWindowReminders(plan);
+    const rebuilt = await rebuildTodayWindows(plan, next, sorted);
+    if (settings?.reminders) await scheduleWindowReminders(rebuilt);
+  };
+
+  const setWindowCount = async (count: number) => {
+    if (count < MIN_WINDOWS || count > MAX_WINDOWS) return;
+    await applyWindowTimes(evenTimes(count));
+  };
+
+  const saveWindowTime = async () => {
+    if (editingWindow === null || !windowDraft) { setEditingWindow(null); return; }
+    const next = [...windowTimes];
+    next[editingWindow] = windowDraft;
+    setEditingWindow(null);
+    await applyWindowTimes(next);
   };
 
   const updateSetting = async (patch: Partial<AppSettings>) => {
@@ -147,6 +200,65 @@ export default function Settings() {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="flex flex-col gap-1.75">
+        <div className="flex items-baseline justify-between px-0.5">
+          <span className="text-[11px] tracking-[0.1em] text-neutral-500">SCHEDULE</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11.5px] text-neutral-500">
+              {windowTimes.length} a day
+            </span>
+            <button
+              type="button"
+              aria-label="One less window"
+              disabled={windowTimes.length <= MIN_WINDOWS}
+              onClick={() => setWindowCount(windowTimes.length - 1)}
+              className="w-6.5 h-6.5 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+            >
+              <Minus size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="One more window"
+              disabled={windowTimes.length >= MAX_WINDOWS}
+              onClick={() => setWindowCount(windowTimes.length + 1)}
+              className="w-6.5 h-6.5 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+            >
+              <Plus size={13} />
+            </button>
+          </div>
+        </div>
+        <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
+          {windowTimes.map((t, i) => (
+            <div key={i}>
+              <ListRow
+                isFirst={i === 0}
+                icon={<Clock size={14} />}
+                title={t}
+                subtitle={i === 0 ? 'First window of the day' : i === windowTimes.length - 1 ? 'Last chance to catch up' : 'Tap to change'}
+                trailing={<span className="text-[13px] text-neutral-600">›</span>}
+                onClick={() => { setEditingWindow(i); setWindowDraft(t); }}
+              />
+              {editingWindow === i && (
+                <div className="flex items-center gap-2.5 px-3.5 py-3 bg-accent-900">
+                  <input
+                    type="time"
+                    value={windowDraft}
+                    onChange={(e) => setWindowDraft(e.target.value)}
+                    className="flex-1 h-9 px-2.5 rounded-lg bg-surface border border-neutral-800 text-sm text-text outline-none focus-visible:border-accent"
+                  />
+                  <Button variant="secondary" className="h-9 px-3 text-xs flex-none" onClick={() => setEditingWindow(null)}>Cancel</Button>
+                  <Button variant="primary" className="h-9 px-3 text-xs flex-none" onClick={saveWindowTime}>Save</Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <span className="text-[11px] leading-[1.5] text-neutral-600 px-0.5">
+          Your daily reps are split across these times. Anything you've already
+          finished today stays done - only what's left gets re-cut.
+        </span>
       </div>
 
       <div className="flex flex-col gap-1.75">

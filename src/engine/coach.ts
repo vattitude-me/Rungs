@@ -152,8 +152,22 @@ function minutesToTime(mins: number): string {
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
-/** Splits daily per-exercise targets across windows, never mixing more than 2
- * exercises per window.
+/** Which exercises land in window `i` (1-based), cycling through the list so
+ * consecutive windows lead with different movements. */
+function pickExercises(order: Exercise[], i: number, perWindow: number): Exercise[] {
+  const startIdx = ((i - 1) * perWindow) % Math.max(1, order.length);
+  const picks: Exercise[] = [];
+  for (let k = 0; k < order.length && picks.length < perWindow; k++) {
+    const ex = order[(startIdx + k) % order.length];
+    if (!picks.includes(ex)) picks.push(ex);
+  }
+  return picks;
+}
+
+/** Splits daily per-exercise targets across windows, keeping each window to a
+ * couple of exercises where there are enough windows to go round. With only
+ * two or three windows every exercise has to appear in each one, or the day
+ * back-loads badly onto the last window.
  *
  * `times` are the window times the user picked during onboarding and are used
  * verbatim. Without them, times are derived by spacing `windowCount` windows
@@ -188,15 +202,14 @@ export function splitIntoWindows(
   // Precompute, per exercise, which window indices (1-based) it lands in -
   // the picks loop below is deterministic from i alone, so this mirrors it
   // rather than re-deriving picks twice.
+  // Cycling two exercises per window keeps each one short, but that only
+  // works when there are enough windows for every exercise to come round
+  // often enough. Below that, spread all of them across every window.
+  const perWindow = windowCount >= exerciseOrder.length * 2 ? 2 : exerciseOrder.length;
+
   const appearances: Record<Exercise, number[]> = { push: [], pull: [], squat: [] };
   for (let i = 1; i <= windowCount; i++) {
-    const startIdx = ((i - 1) * 2) % Math.max(1, exerciseOrder.length);
-    const picks: Exercise[] = [];
-    for (let k = 0; k < exerciseOrder.length && picks.length < 2; k++) {
-      const ex = exerciseOrder[(startIdx + k) % exerciseOrder.length];
-      if (!picks.includes(ex)) picks.push(ex);
-    }
-    for (const ex of picks) appearances[ex].push(i);
+    for (const ex of pickExercises(exerciseOrder, i, perWindow)) appearances[ex].push(i);
   }
   const lastAppearance: Partial<Record<Exercise, number>> = {};
   for (const ex of exerciseOrder) {
@@ -209,13 +222,7 @@ export function splitIntoWindows(
     const at = timeFor(i);
     const items: WindowItem[] = [];
 
-    // Cycle exercises across windows, at most 2 per window.
-    const startIdx = ((i - 1) * 2) % Math.max(1, exerciseOrder.length);
-    const picks: Exercise[] = [];
-    for (let k = 0; k < exerciseOrder.length && picks.length < 2; k++) {
-      const ex = exerciseOrder[(startIdx + k) % exerciseOrder.length];
-      if (!picks.includes(ex) && remaining[ex] > 0) picks.push(ex);
-    }
+    const picks = pickExercises(exerciseOrder, i, perWindow).filter((ex) => remaining[ex] > 0);
 
     for (const ex of picks) {
       // On this exercise's last scheduled window, take everything left -
@@ -238,11 +245,11 @@ export function splitIntoWindows(
 
 const REFLOW_CAP = 0.4;
 
-/** Marks a missed window as such and, when `redistribute` is on, spreads its
- * reps across remaining pending windows (capped at +40% of any window's
- * original volume; overflow is dropped). With `redistribute` off, the window
- * is still marked missed - the coach just doesn't reshuffle the day for it. */
-export function reflow(windows: Window[], missedWindowId: string, redistribute = true): Window[] {
+/** Marks a missed window as such and spreads its reps across the remaining
+ * open windows, capped at +40% of any window's original volume so a blown-off
+ * morning can't turn the last window of the day into an impossible pile;
+ * overflow past that is dropped. */
+export function reflow(windows: Window[], missedWindowId: string): Window[] {
   const missed = windows.find((w) => w.id === missedWindowId);
   if (!missed) return windows;
 
@@ -255,7 +262,7 @@ export function reflow(windows: Window[], missedWindowId: string, redistribute =
   // later miss can still add to them.
   const isOpen = (w: Window) => w.status === 'pending' || w.status === 'reflowed';
   const pending = windows.filter((w) => w.id !== missedWindowId && isOpen(w));
-  if (!redistribute || pending.length === 0) {
+  if (pending.length === 0) {
     return windows.map((w) => (w.id === missedWindowId ? { ...w, status: 'missed' } : w));
   }
 
@@ -273,6 +280,51 @@ export function reflow(windows: Window[], missedWindowId: string, redistribute =
     });
     return { ...w, items, status: 'reflowed' };
   });
+}
+
+/** Fraction of a tested max we'll ask for in one unbroken set. Below a true
+ * max effort, so a set is hard but finishable - going to failure every set
+ * wrecks the rest of the day's windows. */
+const SET_MAX_FRACTION = 0.8;
+
+/** Ceilings for when there's no tested max to scale from (a 0/0/0 baseline),
+ * and as an upper bound for a very strong max - 60 unbroken squats is a
+ * grind whatever your max is. */
+const SET_CEILING: Record<Exercise, number> = { push: 20, pull: 8, squat: 25 };
+
+/** Largest single set we'll ask of someone for one exercise: 80% of their
+ * tested max, held within a sane ceiling and at least 5 so the day never
+ * fragments into a dozen trivial sets. */
+export function setCapFor(exercise: Exercise, max: number): number {
+  const fromMax = Math.floor(Math.max(0, max) * SET_MAX_FRACTION);
+  const capped = Math.min(fromMax || SET_CEILING[exercise], SET_CEILING[exercise]);
+  return Math.max(5, capped);
+}
+
+/** Breaks a window's items into sets no larger than the user can reasonably
+ * do unbroken, splitting evenly so 40 squats reads as 20 + 20 rather than
+ * 25 + 15. Items already within the cap are left exactly as they are. */
+export function splitIntoSets(
+  items: WindowItem[],
+  maxes: Record<Exercise, number>
+): WindowItem[] {
+  const out: WindowItem[] = [];
+  for (const item of items) {
+    const cap = setCapFor(item.exercise, maxes[item.exercise] ?? 0);
+    if (item.reps <= cap) {
+      out.push(item);
+      continue;
+    }
+    const setCount = Math.ceil(item.reps / cap);
+    const base = Math.floor(item.reps / setCount);
+    // Spread the remainder over the earliest sets, so any heavier set comes
+    // while the user is freshest.
+    const remainder = item.reps % setCount;
+    for (let i = 0; i < setCount; i++) {
+      out.push({ ...item, reps: base + (i < remainder ? 1 : 0) });
+    }
+  }
+  return out;
 }
 
 export interface SetStructure {

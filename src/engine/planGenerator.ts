@@ -1,6 +1,6 @@
 import type { Exercise, DayPlan, Profile, DayRecord } from '../types';
 import {
-  computeWindowCount, splitIntoWindows, reflow,
+  computeWindowCount, splitIntoWindows, splitIntoSets, reflow,
   computeStreakCredit, updateStreak, computeTierTargets, checkTierPromotion,
 } from './coach';
 import {
@@ -36,7 +36,8 @@ export async function generateDayPlan(
   const windowCount = profile.windowTimes?.length
     || profile.windowCount
     || computeWindowCount(span, totalVolume / EXERCISES.length);
-  const windows = splitIntoWindows(targets, windowCount, profile.wake, profile.sleep, profile.windowTimes);
+  const windows = splitIntoWindows(targets, windowCount, profile.wake, profile.sleep, profile.windowTimes)
+    .map((w) => ({ ...w, items: splitIntoSets(w.items, profile.maxes) }));
 
   const dayOfWeek = new Date(date).getDay();
   const model = dayOfWeek === 2 || dayOfWeek === 5 ? 'ladder' : 'percent';
@@ -76,15 +77,15 @@ async function resolveTier(profile: Profile, date: string): Promise<Profile['tie
 const MISS_GRACE_MINUTES = 20;
 
 /** Marks any pending window whose time has passed (with a grace period) as
- * missed, and persists the result. When `redistribute` is on, the missed
- * reps get spread into the remaining pending windows for the day; either way
- * the window stops showing as "up next" once its time has gone by. Only
- * meaningful for today's plan - a past day's unfinished windows should stay
- * as history, not get redistributed into a plan nobody will act on. */
+ * missed, and persists the result. The missed reps get spread into the
+ * remaining open windows for the day, and the window stops showing as "up
+ * next" once its time has gone by. Only meaningful for today's plan - a past
+ * day's unfinished windows should stay as history, not get redistributed
+ * into a plan nobody will act on. */
 export async function reflowMissedWindows(
   plan: DayPlan,
   todayIso: string,
-  redistribute = true
+  maxes?: Record<Exercise, number>
 ): Promise<DayPlan> {
   if (plan.date !== todayIso) return plan;
 
@@ -100,9 +101,20 @@ export async function reflowMissedWindows(
     if (!current || (current.status !== 'pending' && current.status !== 'reflowed')) continue;
     const minutesPast = nowMin - timeToMinutes(current.at);
     if (minutesPast > MISS_GRACE_MINUTES) {
-      next = { ...next, windows: reflow(next.windows, current.id, redistribute) };
+      next = { ...next, windows: reflow(next.windows, current.id) };
       changed = true;
     }
+  }
+
+  // Absorbing a miss can push an item past what's reasonable in one set, so
+  // re-split the windows that grew.
+  if (changed && maxes) {
+    next = {
+      ...next,
+      windows: next.windows.map((w) =>
+        w.status === 'reflowed' ? { ...w, items: splitIntoSets(w.items, maxes) } : w
+      ),
+    };
   }
 
   if (changed) await saveDayPlan(next);
@@ -136,4 +148,48 @@ export async function recordDayProgress(plan: DayPlan): Promise<void> {
 
   const streak = await getStreak();
   await saveStreak(updateStreak(streak, plan.date, streakCredit));
+}
+
+/** Rebuilds today's remaining windows after the user changes their schedule.
+ *
+ * Windows already done or missed are kept exactly as they are - they're
+ * history, and their reps are already banked. Only what's still outstanding
+ * gets re-cut across the new times, so changing the schedule at noon can't
+ * erase the morning's work or double-count it. */
+export async function rebuildTodayWindows(
+  plan: DayPlan,
+  profile: Profile,
+  windowTimes: string[]
+): Promise<DayPlan> {
+  const settled = plan.windows.filter((w) => w.status === 'done' || w.status === 'missed');
+  const bankedByExercise: Record<Exercise, number> = { push: 0, pull: 0, squat: 0 };
+  for (const w of settled) {
+    for (const item of w.items) bankedByExercise[item.exercise] += item.reps;
+  }
+
+  const remainingTargets: Record<Exercise, number> = { push: 0, pull: 0, squat: 0 };
+  for (const ex of EXERCISES) {
+    remainingTargets[ex] = Math.max(0, (plan.targets[ex] ?? 0) - bankedByExercise[ex]);
+  }
+
+  // Only schedule into times that haven't already gone by, so a new window
+  // isn't born already missed.
+  const nowMin = nowMinutes();
+  const futureTimes = windowTimes.filter((t) => timeToMinutes(t) > nowMin);
+  const times = futureTimes.length > 0 ? futureTimes : windowTimes.slice(-1);
+
+  const rebuilt = splitIntoWindows(
+    remainingTargets, times.length, profile.wake, profile.sleep, times
+  ).map((w, i) => ({
+    ...w,
+    id: `r${Date.now()}-${i}`,
+    items: splitIntoSets(w.items, profile.maxes),
+  }));
+
+  const next: DayPlan = {
+    ...plan,
+    windows: [...settled, ...rebuilt].sort((a, b) => a.at.localeCompare(b.at)),
+  };
+  await saveDayPlan(next);
+  return next;
 }

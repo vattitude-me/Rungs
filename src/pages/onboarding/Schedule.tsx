@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import Button from '../../components/Button';
-import Toggle from '../../components/Toggle';
 import { getBaselineLogs } from '../../db';
-import { computeTierTargets, splitIntoWindows } from '../../engine/coach';
+import { computeTierTargets, splitIntoWindows, splitIntoSets } from '../../engine/coach';
 import type { Exercise } from '../../types';
 import { EXERCISE_LABELS } from '../../types';
 
@@ -26,10 +25,11 @@ const SECONDS_PER_REP = 4;
 function buildProposal(maxes: Record<Exercise, number>): ProposedWindow[] {
   const targets = computeTierTargets(maxes, 100);
   return splitIntoWindows(targets, WINDOW_COUNT, WAKE, SLEEP).map((w) => {
-    const reps = w.items.reduce((a, it) => a + it.reps, 0);
+    const items = splitIntoSets(w.items, maxes);
+    const reps = items.reduce((a, it) => a + it.reps, 0);
     return {
       time: w.at,
-      body: w.items.map((it) => `${it.reps} ${EXERCISE_LABELS[it.exercise].toLowerCase()}`).join(' + '),
+      body: items.map((it) => `${it.reps} ${EXERCISE_LABELS[it.exercise].toLowerCase()}`).join(' + '),
       len: `about ${Math.max(1, Math.round((reps * SECONDS_PER_REP) / 60))} min`,
     };
   });
@@ -39,7 +39,6 @@ export default function Schedule() {
   const navigate = useNavigate();
   const location = useLocation();
   const navState = (location.state as Record<string, unknown> | null) ?? {};
-  const [reflow, setReflow] = useState(true);
   const [proposal, setProposal] = useState<ProposedWindow[]>(() => buildProposal(PLACEHOLDER_MAXES));
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftTime, setDraftTime] = useState('');
@@ -69,7 +68,7 @@ export default function Schedule() {
 
   const handleBuildPlan = () => {
     navigate('/onboarding/plan', {
-      state: { ...navState, windows: proposal.map((w) => w.time), reflow },
+      state: { ...navState, windows: proposal.map((w) => w.time) },
     });
   };
 
@@ -86,7 +85,8 @@ export default function Schedule() {
       <div className="flex flex-col gap-1.5">
         <div className="text-[27px] font-medium tracking-[-0.02em]">Here's the day we'd build</div>
         <div className="text-[13.5px] leading-[1.5] text-neutral-400">
-          Your 100 reps, cut into four short windows. Tap a time to change it and the coach reflows the rest.
+          Your 100 reps, cut into four short windows. Tap a time to change it, and the coach moves reps to
+          your later windows if one slips by.
         </div>
       </div>
 
@@ -119,14 +119,6 @@ export default function Schedule() {
             )}
           </div>
         ))}
-      </div>
-
-      <div className="flex items-center gap-3 p-3.25 rounded-[13px] bg-surface shadow-sm">
-        <span className="flex-1 flex flex-col gap-0.5">
-          <span className="text-[13.5px] font-medium">Let the coach re-shuffle</span>
-          <span className="text-[11.5px] text-neutral-500">Miss a window and the reps move, not vanish.</span>
-        </span>
-        <Toggle on={reflow} onToggle={() => setReflow((r) => !r)} />
       </div>
 
       <div className="mt-auto">

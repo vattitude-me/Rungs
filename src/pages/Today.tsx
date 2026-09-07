@@ -48,7 +48,7 @@ export default function Today() {
       const today = localDate();
       const dayIndex = dayIndexFor(p.createdAt, today);
       let dp = await generateDayPlan(today, dayIndex, p);
-      dp = await reflowMissedWindows(dp, today, p.reflow);
+      dp = await reflowMissedWindows(dp, today, p.maxes);
       if (cancelled) return;
       setPlan(dp);
 
@@ -206,9 +206,7 @@ export default function Today() {
       <div className="flex flex-col gap-2.25">
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] tracking-[0.1em] text-neutral-500">TODAY'S WINDOWS</span>
-          {profile.reflow && (
-            <span className="text-[11.5px] text-neutral-500">Reflows if missed</span>
-          )}
+          <span className="text-[11.5px] text-neutral-500">Reflows if missed</span>
         </div>
         {windowRows.map((w) => (
           <TimelineRow key={w.id} time={w.time} state={w.state}>
