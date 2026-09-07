@@ -9,20 +9,27 @@ import { computeTierTargets } from '../../engine/coach';
 import { generateDayPlan } from '../../engine/planGenerator';
 import { localDate, dayIndexFor } from '../../engine/dates';
 import { isNative, requestNotificationPermission, scheduleWindowReminders } from '../../engine/notifications';
-import type { BarAccess, Exercise, Profile, PullRung, RowEquipment, Tier } from '../../types';
-import { EXERCISE_LABELS, EXERCISE_ICON, PULL_RUNG_LABELS, ROW_EQUIPMENT_LABELS, TIERS } from '../../types';
+import type { Exercise, Profile, PullRung, Tier } from '../../types';
+import { EXERCISE_LABELS, EXERCISE_ICON, PULL_RUNG_LABELS, TIERS } from '../../types';
 
 const notificationsSupported = isNative() || (typeof window !== 'undefined' && 'Notification' in window);
 
 interface OnboardingState {
   name?: string;
   windows?: string[];
-  barAccess?: BarAccess;
-  pullRung?: PullRung;
-  rowEquipment?: RowEquipment;
 }
 
 const FIRST_TIER: Tier = 100;
+
+/** Starting pull-up rung, read off the baseline max. The max test already says
+ * everything the old equipment question asked for, so it's derived rather than
+ * asked - and the coach moves the user up from here as they earn it. */
+function suggestRung(pullMax: number): PullRung {
+  if (pullMax >= 8) return 4;
+  if (pullMax >= 3) return 3;
+  if (pullMax >= 1) return 2;
+  return 1;
+}
 
 export default function PlanPreview() {
   const navigate = useNavigate();
@@ -44,8 +51,7 @@ export default function PlanPreview() {
   if (!maxes) return null;
 
   const targets = computeTierTargets(maxes, FIRST_TIER);
-  const rung = state.pullRung ?? 2;
-  const barAccess = state.barAccess ?? 'doorway';
+  const rung = suggestRung(maxes.pull);
   const windowCount = state.windows?.length ?? 4;
 
   const perWindow = (ex: Exercise) => Math.max(1, Math.round(targets[ex] / windowCount));
@@ -60,8 +66,7 @@ export default function PlanPreview() {
       createdAt: Date.now(),
       maxes,
       pullRung: rung,
-      barAccess,
-      rowEquipment: state.rowEquipment,
+      barAccess: 'doorway',
       wake: state.windows?.[0] ?? '06:30',
       sleep: '23:00',
       windowCount,
@@ -92,9 +97,6 @@ export default function PlanPreview() {
   };
 
   const pullLabel = PULL_RUNG_LABELS[rung].toLowerCase();
-  const rowNote = state.rowEquipment
-    ? ROW_EQUIPMENT_LABELS[state.rowEquipment].toLowerCase()
-    : null;
 
   const rows: { key: Exercise; sub: string }[] = [
     {
@@ -103,9 +105,7 @@ export default function PlanPreview() {
     },
     {
       key: 'pull',
-      sub: rung === 0 && rowNote
-        ? `Max ${maxes.pull} · ${rowNote} · about ${perWindow('pull')} per window`
-        : `Max ${maxes.pull} · ${pullLabel} · about ${perWindow('pull')} per window`,
+      sub: `Max ${maxes.pull} · ${pullLabel} · about ${perWindow('pull')} per window`,
     },
     {
       key: 'squat',

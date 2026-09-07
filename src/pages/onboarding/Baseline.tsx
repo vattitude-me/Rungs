@@ -76,9 +76,9 @@ export default function Baseline() {
       <div className="flex items-center gap-3">
         <Button variant="icon" onClick={() => navigate('/onboarding/name')}><ChevronLeft size={18} /></Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
-          <i className="block h-full bg-accent" style={{ width: '50%' }} />
+          <i className="block h-full bg-accent" style={{ width: '66%' }} />
         </div>
-        <span className="text-[11px] text-neutral-500 flex-none">2 of 4</span>
+        <span className="text-[11px] text-neutral-500 flex-none">2 of 3</span>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -124,9 +124,9 @@ export default function Baseline() {
         <Button
           variant="primary" block className="h-12 text-[15px]"
           disabled={!allTested}
-          onClick={() => navigate('/onboarding/bar', { state: navState })}
+          onClick={() => navigate('/onboarding/schedule', { state: navState })}
         >
-          {allTested ? 'Next: equipment' : 'Test all three to continue'}
+          {allTested ? 'Next: pick my windows' : 'Test all three to continue'}
         </Button>
         <Button variant="ghost" block onClick={() => { setTyping(true); setTouched(false); }}>
           I'll type my numbers instead

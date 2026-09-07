@@ -152,22 +152,9 @@ function minutesToTime(mins: number): string {
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
-/** Which exercises land in window `i` (1-based), cycling through the list so
- * consecutive windows lead with different movements. */
-function pickExercises(order: Exercise[], i: number, perWindow: number): Exercise[] {
-  const startIdx = ((i - 1) * perWindow) % Math.max(1, order.length);
-  const picks: Exercise[] = [];
-  for (let k = 0; k < order.length && picks.length < perWindow; k++) {
-    const ex = order[(startIdx + k) % order.length];
-    if (!picks.includes(ex)) picks.push(ex);
-  }
-  return picks;
-}
-
-/** Splits daily per-exercise targets across windows, keeping each window to a
- * couple of exercises where there are enough windows to go round. With only
- * two or three windows every exercise has to appear in each one, or the day
- * back-loads badly onto the last window.
+/** Splits daily per-exercise targets evenly across windows, with every window
+ * carrying every exercise. Keeping windows short is `splitIntoSets`' job, so
+ * this one only has to divide the day without back-loading it.
  *
  * `times` are the window times the user picked during onboarding and are used
  * verbatim. Without them, times are derived by spacing `windowCount` windows
@@ -199,36 +186,20 @@ export function splitIntoWindows(
   const remaining: Record<Exercise, number> = { ...dailyTargets };
   const exerciseOrder = EXERCISES.filter((e) => dailyTargets[e] > 0);
 
-  // Precompute, per exercise, which window indices (1-based) it lands in -
-  // the picks loop below is deterministic from i alone, so this mirrors it
-  // rather than re-deriving picks twice.
-  // Cycling two exercises per window keeps each one short, but that only
-  // works when there are enough windows for every exercise to come round
-  // often enough. Below that, spread all of them across every window.
-  const perWindow = windowCount >= exerciseOrder.length * 2 ? 2 : exerciseOrder.length;
-
-  const appearances: Record<Exercise, number[]> = { push: [], pull: [], squat: [] };
+  // Every window carries every exercise the user is actually doing. Rotating a
+  // subset used to keep windows short, but set-splitting handles length now, and
+  // rotating made a window's size depend on which exercises it happened to draw -
+  // with unequal targets that swung a six-window day between 9 and 24 reps.
   for (let i = 1; i <= windowCount; i++) {
-    for (const ex of pickExercises(exerciseOrder, i, perWindow)) appearances[ex].push(i);
-  }
-  const lastAppearance: Partial<Record<Exercise, number>> = {};
-  for (const ex of exerciseOrder) {
-    const list = appearances[ex];
-    if (list.length > 0) lastAppearance[ex] = list[list.length - 1];
-  }
-
-  for (let i = 1; i <= windowCount; i++) {
-    const windowsLeft = windowCount - i + 1;
     const at = timeFor(i);
     const items: WindowItem[] = [];
 
-    const picks = pickExercises(exerciseOrder, i, perWindow).filter((ex) => remaining[ex] > 0);
+    const windowsLeft = windowCount - i + 1;
 
-    for (const ex of picks) {
-      // On this exercise's last scheduled window, take everything left -
-      // windowsLeft counts windows in general, not windows that still
-      // include this exercise, so relying on it here would strand reps.
-      const reps = lastAppearance[ex] === i
+    for (const ex of exerciseOrder) {
+      if (remaining[ex] <= 0) continue;
+      // The last window takes whatever is left, so rounding never strands reps.
+      const reps = windowsLeft <= 1
         ? remaining[ex]
         : Math.max(0, Math.ceil(remaining[ex] / windowsLeft));
       if (reps > 0) {

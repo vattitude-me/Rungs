@@ -12,7 +12,6 @@ import Layout from './components/Layout';
 import Welcome from './pages/onboarding/Welcome';
 import Name from './pages/onboarding/Name';
 import Baseline from './pages/onboarding/Baseline';
-import Equipment from './pages/onboarding/Equipment';
 import Schedule from './pages/onboarding/Schedule';
 import PlanPreview from './pages/onboarding/PlanPreview';
 import Session from './pages/Session';
@@ -66,7 +65,6 @@ export default function App() {
         <Route path="/onboarding/welcome" element={<Welcome />} />
         <Route path="/onboarding/name" element={<Name />} />
         <Route path="/onboarding/baseline" element={<Baseline />} />
-        <Route path="/onboarding/bar" element={<Equipment />} />
         <Route path="/onboarding/schedule" element={<Schedule />} />
         <Route path="/onboarding/plan" element={<PlanPreview />} />
         <Route path="/session" element={<Session />} />

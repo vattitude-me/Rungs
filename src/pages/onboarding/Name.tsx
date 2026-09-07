@@ -34,9 +34,9 @@ export default function Name() {
       <div className="flex items-center gap-3">
         <Button variant="icon" onClick={() => navigate('/onboarding/welcome')}><ChevronLeft size={18} /></Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
-          <i className="block h-full bg-accent" style={{ width: '25%' }} />
+          <i className="block h-full bg-accent" style={{ width: '33%' }} />
         </div>
-        <span className="text-[11px] text-neutral-500 flex-none">1 of 4</span>
+        <span className="text-[11px] text-neutral-500 flex-none">1 of 3</span>
       </div>
 
       <div className="flex flex-col gap-1.5">
