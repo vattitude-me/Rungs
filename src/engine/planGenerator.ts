@@ -94,7 +94,10 @@ export async function reflowMissedWindows(
 
   for (const original of plan.windows) {
     const current = next.windows.find((w) => w.id === original.id);
-    if (!current || current.status !== 'pending') continue;
+    // 'reflowed' means still open, just topped up by an earlier miss - it's
+    // as eligible to go stale as 'pending' is, or a boosted window that's
+    // since gone unactioned would surface as "up next" forever.
+    if (!current || (current.status !== 'pending' && current.status !== 'reflowed')) continue;
     const minutesPast = nowMin - timeToMinutes(current.at);
     if (minutesPast > MISS_GRACE_MINUTES) {
       next = { ...next, windows: reflow(next.windows, current.id, redistribute) };

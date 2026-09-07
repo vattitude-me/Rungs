@@ -251,14 +251,17 @@ export function reflow(windows: Window[], missedWindowId: string, redistribute =
     missedByExercise[item.exercise] = (missedByExercise[item.exercise] ?? 0) + item.reps;
   }
 
-  const pending = windows.filter((w) => w.id !== missedWindowId && w.status === 'pending');
+  // 'reflowed' windows are still open (just already topped up once), so a
+  // later miss can still add to them.
+  const isOpen = (w: Window) => w.status === 'pending' || w.status === 'reflowed';
+  const pending = windows.filter((w) => w.id !== missedWindowId && isOpen(w));
   if (!redistribute || pending.length === 0) {
     return windows.map((w) => (w.id === missedWindowId ? { ...w, status: 'missed' } : w));
   }
 
   return windows.map((w) => {
     if (w.id === missedWindowId) return { ...w, status: 'missed' };
-    if (w.status !== 'pending') return w;
+    if (!isOpen(w)) return w;
 
     const items = w.items.map((item) => {
       const extra = missedByExercise[item.exercise];

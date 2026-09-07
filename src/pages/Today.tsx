@@ -175,7 +175,7 @@ export default function Today() {
 
       <LitCard className="flex flex-col gap-2.75 p-4">
         <div className="text-[10px] tracking-[0.12em] text-accent">
-          {nextWindow ? `UP NEXT · ${nextWindow.at}` : 'ALL WINDOWS DONE'}
+          {nextWindow ? `UP NEXT · ${nextWindow.at}` : goalHit ? 'ALL WINDOWS DONE' : 'DAY WRAPPED'}
         </div>
         <div className="flex items-end justify-between gap-3">
           <div className="flex flex-col gap-0.75">
@@ -186,8 +186,10 @@ export default function Today() {
                   {plan.model === 'ladder' ? 'Ladder sets' : 'Straight sets'} · about {estimateMinutes(nextReps)} min
                 </div>
               </>
-            ) : (
+            ) : goalHit ? (
               <div className="text-[15px] text-neutral-400">Nothing left scheduled today. Nice work.</div>
+            ) : (
+              <div className="text-[15px] text-neutral-400">Today's windows have passed. Tomorrow's a fresh start.</div>
             )}
           </div>
           {nextWindow && (
