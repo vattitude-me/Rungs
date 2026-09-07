@@ -102,7 +102,9 @@ export default function Settings() {
     // ones before they're orphaned, then re-arm from the new schedule.
     await cancelWindowReminders(plan);
     const rebuilt = await rebuildTodayWindows(plan, next, sorted);
-    if (settings?.reminders) await scheduleWindowReminders(rebuilt);
+    // `next`, not `profile` - reminders now project future days from the
+    // profile, and those days must use the schedule just saved.
+    if (settings?.reminders) await scheduleWindowReminders(rebuilt, next);
   };
 
   const setWindowCount = async (count: number) => {
