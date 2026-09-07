@@ -13,4 +13,10 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
+
+    // @capacitor-firebase/authentication ships Google Sign-In's dependencies as
+    // compileOnly unless this is set - without it the app compiles clean but
+    // FirebaseAuthentication.signInWithGoogle() has no implementation to call
+    // into at runtime, so tapping sign-in does nothing.
+    rgcfaIncludeGoogle = true
 }
