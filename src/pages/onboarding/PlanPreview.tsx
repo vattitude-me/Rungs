@@ -70,6 +70,9 @@ export default function PlanPreview() {
       windowTimes: state.windows,
       onboardingComplete: true,
       baselineComplete: true,
+      // The baseline test just taken counts as the first one, so the retest
+      // prompt is measured from today rather than firing straight away.
+      lastRebaselineAt: today,
       tier: FIRST_TIER,
       tierStartedAt: today,
     };

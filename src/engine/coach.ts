@@ -363,9 +363,17 @@ export function buildSetStructure(
 
 const REBASELINE_INTERVAL_DAYS = 21;
 
-export function shouldRebaseline(lastRebaselineAt: string | undefined, today: string): boolean {
-  if (!lastRebaselineAt) return false;
-  return daysBetweenDates(lastRebaselineAt, today) >= REBASELINE_INTERVAL_DAYS;
+/** Whether it's time to retest maxes. Falls back to when the user started, so
+ * someone who has never retested is still prompted - their onboarding numbers
+ * are exactly the ones most likely to have gone stale. */
+export function shouldRebaseline(
+  lastRebaselineAt: string | undefined,
+  today: string,
+  startedAt?: string
+): boolean {
+  const since = lastRebaselineAt || startedAt;
+  if (!since) return false;
+  return daysBetweenDates(since, today) >= REBASELINE_INTERVAL_DAYS;
 }
 
 export interface RebaselineResult {

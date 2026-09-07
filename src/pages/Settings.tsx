@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Mic, Timer, Vibrate, Bell, Lock, Info, ChevronDown, Clock, Minus, Plus,
+  Mic, Timer, Vibrate, Bell, Lock, Info, ChevronDown, Clock, Minus, Plus, Gauge,
   UserPlus, Users, Sparkles, Cloud, Camera, Watch, Trophy,
 } from 'lucide-react';
 import Button from '../components/Button';
@@ -13,7 +13,8 @@ import {
   scheduleWindowReminders, cancelWindowReminders,
 } from '../engine/notifications';
 import { generateDayPlan, rebuildTodayWindows } from '../engine/planGenerator';
-import { localDate, dayIndexFor } from '../engine/dates';
+import { localDate, dayIndexFor, daysBetweenDates } from '../engine/dates';
+import { shouldRebaseline } from '../engine/coach';
 import type { Profile, AppSettings } from '../types';
 
 type NotifState = 'granted' | 'denied' | 'unsupported';
@@ -71,6 +72,11 @@ export default function Settings() {
 
   const initial = (profile.name.trim()[0] || 'A').toUpperCase();
   const windowTimes = profile.windowTimes?.length ? profile.windowTimes : FALLBACK_TIMES;
+  const today = localDate();
+  const testedOn = profile.lastRebaselineAt || localDate(new Date(profile.createdAt));
+  const daysSinceTest = daysBetweenDates(testedOn, today);
+  const retestDue = shouldRebaseline(profile.lastRebaselineAt, today, localDate(new Date(profile.createdAt)));
+  const lastTestedLabel = daysSinceTest <= 0 ? 'today' : daysSinceTest === 1 ? 'yesterday' : `${daysSinceTest} days ago`;
 
   const saveName = async () => {
     const n = nameDraft.trim().slice(0, 24);
@@ -199,6 +205,30 @@ export default function Settings() {
               <ListRow key={f.title} icon={<f.icon size={14} />} title={f.title} subtitle={f.subtitle} />
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.75">
+        <span className="text-[11px] tracking-[0.1em] text-neutral-500">STRENGTH</span>
+        <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
+          <ListRow
+            isFirst
+            icon={<Gauge size={14} />}
+            title="Retest your maxes"
+            subtitle={
+              retestDue
+                ? `Due now · last tested ${lastTestedLabel}`
+                : `${profile.maxes.push} push · ${profile.maxes.pull} pull · ${profile.maxes.squat} squat`
+            }
+            trailing={<span className="text-[13px] text-neutral-600">›</span>}
+            onClick={() => navigate('/settings/retest')}
+          />
+        </div>
+        {retestDue && (
+          <span className="text-[11px] leading-[1.5] text-neutral-600 px-0.5">
+            Your plan still sizes sets from these numbers. If they're out of
+            date the day gets harder or easier than it should be.
+          </span>
         )}
       </div>
 

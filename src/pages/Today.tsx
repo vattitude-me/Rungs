@@ -9,6 +9,7 @@ import { TimelineRow, type TimelineDotState } from '../components/Timeline';
 import { getProfile, getSettings, getSetLogs } from '../db';
 import { generateDayPlan, reflowMissedWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor } from '../engine/dates';
+import { shouldRebaseline } from '../engine/coach';
 import type { Exercise, Profile, DayPlan, DashboardVariant } from '../types';
 import { EXERCISE_LABELS, EXERCISE_COLOR } from '../types';
 
@@ -90,6 +91,12 @@ export default function Today() {
   const goalBarColor = goalHit ? '#f2c14e' : totalPct >= 75 ? '#b5abfc' : '#5d5294';
   const goalTextColor = goalHit ? '#f2c14e' : totalPct >= 75 ? '#d2cefd' : '#75798c';
 
+  const retestDue = shouldRebaseline(
+    profile.lastRebaselineAt,
+    localDate(),
+    localDate(new Date(profile.createdAt))
+  );
+
   const nextWindow = plan.windows.find((w) => w.status === 'pending' || w.status === 'reflowed');
   const nextReps = nextWindow?.items.reduce((a, it) => a + it.reps, 0) ?? 0;
   const nextSummary = nextWindow?.items
@@ -131,6 +138,22 @@ export default function Today() {
           <CircleUser size={19} strokeWidth={1.8} />
         </button>
       </div>
+
+      {retestDue && (
+        <button
+          type="button"
+          onClick={() => navigate('/settings/retest')}
+          className="flex items-center gap-3 p-3.25 rounded-[13px] bg-accent-900 text-left cursor-pointer"
+        >
+          <span className="flex-1 flex flex-col gap-0.5">
+            <span className="text-[13px] font-medium text-accent-100">Time to retest your maxes</span>
+            <span className="text-[11.5px] leading-[1.4] text-accent-200">
+              Your sets are still sized from your last test. A minute now keeps the day honest.
+            </span>
+          </span>
+          <span className="text-[13px] text-accent-200 flex-none">›</span>
+        </button>
+      )}
 
       <div className="flex flex-col gap-1.5 px-1">
         <div className="flex items-baseline justify-between">

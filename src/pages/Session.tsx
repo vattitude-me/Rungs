@@ -48,6 +48,9 @@ export default function Session() {
   const location = useLocation();
   const [params] = useSearchParams();
   const isBaseline = params.get('mode') === 'baseline';
+  // A max test can be run from onboarding or from a later retest; it has to
+  // return to whichever one sent us here.
+  const baselineReturn = params.get('from') === 'retest' ? '/settings/retest' : '/onboarding/baseline';
   const isAdhoc = params.get('adhoc') === '1';
   const windowId = params.get('windowId') ?? undefined;
 
@@ -138,7 +141,7 @@ export default function Session() {
     const today = localDate();
     if (isBaseline) {
       saveBaselineLog({ id: exercise, exercise, maxReps: reps, testedAt: Date.now() });
-      navigate('/onboarding/baseline', { replace: true, state: location.state });
+      navigate(baselineReturn, { replace: true, state: location.state });
       return;
     }
     const logged = saveSetLog({

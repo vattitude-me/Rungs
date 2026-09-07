@@ -193,3 +193,27 @@ export async function rebuildTodayWindows(
   await saveDayPlan(next);
   return next;
 }
+
+/** Applies freshly tested maxes to the profile and rebuilds today around them.
+ *
+ * The profile's `maxes` drive both the daily split and how big a single set
+ * can be, so leaving them at their onboarding values means someone who has
+ * tripled their strength still gets sets sized for who they were on day one.
+ * Already-settled windows keep their banked reps; only what's left is re-cut. */
+export async function applyRetestedMaxes(
+  profile: Profile,
+  maxes: Record<Exercise, number>,
+  today: string
+): Promise<Profile> {
+  const next: Profile = { ...profile, maxes, lastRebaselineAt: today };
+  await saveProfile(next);
+
+  const plan = await getDayPlan(today);
+  if (plan) {
+    const times = next.windowTimes?.length
+      ? next.windowTimes
+      : plan.windows.map((w) => w.at);
+    await rebuildTodayWindows({ ...plan, targets: computeTierTargets(maxes, plan.tier ?? 100) }, next, times);
+  }
+  return next;
+}
