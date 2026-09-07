@@ -4,16 +4,32 @@ import { ChevronLeft, HardDrive, WifiOff, Share2, Trash2, CloudOff } from 'lucid
 import Button from '../components/Button';
 import ListRow from '../components/ListRow';
 import { resetAllData } from '../db';
+import { useCloudSync } from '../hooks/useCloudSync';
 import { cloudConfigured } from '../cloud/config';
 
 const CONFIRM_PHRASE = 'DELETE';
 
 export default function DataPrivacy() {
   const navigate = useNavigate();
+  const { account, deleteAccount } = useCloudSync();
   const [confirming, setConfirming] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
 
   const handleReset = async () => {
+    setWorking(true);
+    setError(null);
+    try {
+      // Cloud first, while the user is still authenticated: the security rules
+      // only let someone delete their own data, so wiping the local copy (and
+      // with it the signed-in session) first would strand the backup online.
+      if (account) await deleteAccount();
+    } catch (e) {
+      setError((e as Error).message);
+      setWorking(false);
+      return;
+    }
     await resetAllData();
     // A full reload (not client-side navigate) so every in-memory copy of
     // the now-deleted profile/settings is dropped, not just this page's.
@@ -60,7 +76,7 @@ export default function DataPrivacy() {
 
       <div className="text-[11.5px] leading-[1.5] text-neutral-500">
         {cloudConfigured
-          ? "Uninstalling the app or clearing this browser's site data deletes the local copy permanently. If you've backed up, that copy lives under your Google account until you delete it - day-by-day set detail is kept for six months, while your daily totals, streak and max tests are kept in full."
+          ? "Uninstalling the app or clearing this browser's site data deletes the local copy permanently. If you're signed in, a copy also lives under your Google account - day-by-day set detail for six months, with your daily totals, streak and max tests kept in full. Delete account and all data below removes that copy and the account itself, in one step."
           : "Uninstalling the app or clearing this browser's site data deletes it permanently. There's no cloud copy to restore from yet: accounts and sync are planned for a future update."}
       </div>
 
@@ -68,8 +84,11 @@ export default function DataPrivacy() {
         <span className="text-[11px] tracking-[0.1em] text-neutral-500">DANGER ZONE</span>
         <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
           <ListRow
-            isFirst icon={<Trash2 size={14} />} title="Delete all data"
-            subtitle="Erases your profile and every logged rep, right now"
+            isFirst icon={<Trash2 size={14} />}
+            title={account ? 'Delete account and all data' : 'Delete all data'}
+            subtitle={account
+              ? 'Erases this device, your cloud copy, and your Rungs account — everywhere'
+              : 'Erases your profile and every logged rep, right now'}
             trailing={
               !confirming && (
                 <Button
@@ -84,8 +103,16 @@ export default function DataPrivacy() {
           {confirming && (
             <div className="flex flex-col gap-2.5 px-4 pt-1 pb-4">
               <div className="text-[12.5px] leading-[1.5] text-neutral-400">
-                This can't be undone. Type <span className="text-text font-medium">{CONFIRM_PHRASE}</span> to confirm.
+                {account
+                  ? <>This deletes your reps on this device, the copy stored under{' '}
+                      <span className="text-text font-medium">{account.email ?? 'your Google account'}</span>,
+                      and your Rungs account itself. It can't be undone.</>
+                  : <>This can't be undone.</>}{' '}
+                Type <span className="text-text font-medium">{CONFIRM_PHRASE}</span> to confirm.
               </div>
+              {error && (
+                <div className="text-[12px] leading-[1.5] text-danger">{error}</div>
+              )}
               <input
                 autoFocus
                 value={confirmText}
@@ -102,10 +129,10 @@ export default function DataPrivacy() {
                 </Button>
                 <Button
                   variant="danger" className="flex-1"
-                  disabled={confirmText !== CONFIRM_PHRASE}
+                  disabled={confirmText !== CONFIRM_PHRASE || working}
                   onClick={handleReset}
                 >
-                  Delete everything
+                  {working ? 'Deleting…' : 'Delete everything'}
                 </Button>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import {
   GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
-  signOut as fbSignOut, onAuthStateChanged, type User,
+  signOut as fbSignOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup,
+  type User,
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { cloudAuth } from './firebase';
@@ -59,4 +60,31 @@ export async function signIn(): Promise<CloudAccount | null> {
 
 export async function signOut(): Promise<void> {
   await fbSignOut(cloudAuth());
+}
+
+/** Permanently removes the Google account's link to Rungs, so no trace of the
+ * user remains in Firebase Auth.
+ *
+ * Firebase refuses to delete an account whose sign-in is more than a few
+ * minutes old, so a stale session is re-authenticated first rather than
+ * failing in the user's face mid-deletion. Native builds can't show a popup,
+ * so there the caller is told to sign in again instead.
+ */
+export async function deleteAccount(): Promise<void> {
+  const auth = cloudAuth();
+  const user = auth.currentUser;
+  if (!user) return;
+
+  try {
+    await deleteUser(user);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code !== 'auth/requires-recent-login') throw err;
+
+    if (Capacitor.isNativePlatform()) {
+      throw new Error('Please sign out, sign in again, and then delete your account.');
+    }
+    await reauthenticateWithPopup(user, new GoogleAuthProvider());
+    await deleteUser(user);
+  }
 }

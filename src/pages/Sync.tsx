@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, LogOut, Trash2, ShieldCheck, RefreshCw } from 'lucide-react';
+import { ChevronLeft, LogOut, Trash2, ShieldCheck, RefreshCw, UserX } from 'lucide-react';
 import Button from '../components/Button';
 import ListRow from '../components/ListRow';
 import { cloudConfigured } from '../cloud/config';
@@ -33,7 +33,7 @@ export default function Sync() {
   // which may be empty on a cold start.
   const fromWelcome = (location.state as { from?: string } | null)?.from === 'welcome';
 
-  const { account, state, signIn, signOut, syncNow } = useCloudSync();
+  const { account, state, signIn, disconnect, syncNow } = useCloudSync();
   const [meta, setMeta] = useState<BackupMeta | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,9 +148,9 @@ export default function Sync() {
                 <span className="text-[11px] tracking-[0.1em] text-neutral-500">ACCOUNT</span>
                 <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
                   <ListRow
-                    isFirst icon={<LogOut size={14} />} title="Sign out"
-                    subtitle="Your data stays on this device"
-                    onClick={busy ? undefined : () => void signOut()}
+                    isFirst icon={<LogOut size={14} />} title="Disconnect this device"
+                    subtitle="Stops syncing here. Your data stays on this device and in the cloud"
+                    onClick={busy ? undefined : () => void disconnect()}
                     trailing={<span className="text-[13px] text-neutral-600">›</span>}
                   />
                   {meta && (
@@ -161,6 +161,12 @@ export default function Sync() {
                       trailing={<span className="text-[13px] text-neutral-600">›</span>}
                     />
                   )}
+                  <ListRow
+                    icon={<UserX size={14} />} title="Delete account"
+                    subtitle="Erases everything, everywhere — on Data & privacy"
+                    onClick={() => navigate('/settings/privacy')}
+                    trailing={<span className="text-[13px] text-neutral-600">›</span>}
+                  />
                 </div>
               </div>
 

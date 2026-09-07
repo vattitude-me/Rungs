@@ -18,6 +18,11 @@ interface CloudContext {
   /** Resolve a conflict by choosing which side wins. */
   resolve: (keep: 'local' | 'cloud') => Promise<void>;
   syncNow: () => Promise<void>;
+  /** Disconnect this device from the account, leaving the cloud copy intact. */
+  disconnect: () => Promise<void>;
+  /** Erase the cloud copy and the Google account link. Local data is the
+   * caller's to handle. */
+  deleteAccount: () => Promise<void>;
 }
 
 const Ctx = createContext<CloudContext | null>(null);
@@ -33,6 +38,10 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
   // Guards against two syncs overlapping - a debounced upload firing while the
   // sign-in sync is still running would race on the same documents.
   const running = useRef(false);
+  // Set while an account is being deleted. A debounced upload landing between
+  // "delete the backup" and "delete the account" would quietly recreate the
+  // data the user just asked us to destroy.
+  const deleting = useRef(false);
 
   useEffect(() => {
     if (!cloudConfigured) return;
@@ -48,7 +57,7 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
 
   /** One sync pass: work out which way data should move, then move it. */
   const sync = useCallback(async (uid: string) => {
-    if (running.current) return;
+    if (running.current || deleting.current) return;
     running.current = true;
     setState({ status: 'syncing' });
     try {
@@ -171,8 +180,43 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
     if (account) await sync(account.uid);
   }, [account, sync]);
 
+  /** Signs out and forgets the sync clock, but leaves the cloud copy alone -
+   * the user is stepping off this device, not giving up their history. */
+  const disconnect = useCallback(async () => {
+    const [auth, auto] = await Promise.all([authModule(), autoModule()]);
+    await auth.signOut();
+    auto.resetChangeMarks();
+    setConflict(false);
+    setState(IDLE);
+  }, []);
+
+  /** Removes everything Rungs holds for this account, cloud-side.
+   *
+   * Order matters: the Firestore documents are deleted while the user is still
+   * authenticated, because the security rules only permit a user to delete
+   * their own data - dropping the auth account first would strand the backup
+   * with no one able to reach it. */
+  const deleteAccountFully = useCallback(async () => {
+    if (!account) return;
+    deleting.current = true;
+    setState({ status: 'syncing' });
+    try {
+      const [auth, cloud, auto] = await Promise.all([authModule(), syncModule(), autoModule()]);
+      await cloud.deleteBackup(account.uid);
+      await auth.deleteAccount();
+      auto.resetChangeMarks();
+      setConflict(false);
+      setState(IDLE);
+    } finally {
+      deleting.current = false;
+    }
+  }, [account]);
+
   return (
-    <Ctx.Provider value={{ account, state, conflict, signIn, signOut, resolve, syncNow }}>
+    <Ctx.Provider value={{
+      account, state, conflict, signIn, signOut, resolve, syncNow,
+      disconnect, deleteAccount: deleteAccountFully,
+    }}>
       {children}
     </Ctx.Provider>
   );
