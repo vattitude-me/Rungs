@@ -6,7 +6,8 @@ import FillBar from '../components/FillBar';
 import LitCard from '../components/LitCard';
 import Button from '../components/Button';
 import { TimelineRow, type TimelineDotState } from '../components/Timeline';
-import CloudCard from '../components/CloudCard';
+import CloudButton from '../components/CloudButton';
+import InstallCard from '../components/InstallCard';
 import { getProfile, getSettings, getSetLogs } from '../db';
 import { generateDayPlan, reflowMissedWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor } from '../engine/dates';
@@ -131,16 +132,19 @@ export default function Today() {
             Day {plan.dayIndex + 1} · tier {dailyGoal} · {totalDone} of {dailyGoal} reps{goalHit ? ' · goal hit' : ''}
           </div>
         </div>
-        <button
-          onClick={() => navigate('/settings')}
-          aria-label="Settings"
-          className="w-9.5 h-9.5 flex-none rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer"
-        >
-          <CircleUser size={19} strokeWidth={1.8} />
-        </button>
+        <div className="flex items-center gap-2 flex-none">
+          <CloudButton />
+          <button
+            onClick={() => navigate('/settings')}
+            aria-label="Settings"
+            className="w-9.5 h-9.5 flex-none rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer"
+          >
+            <CircleUser size={19} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
 
-      <CloudCard />
+      <InstallCard />
 
       {retestDue && (
         <button

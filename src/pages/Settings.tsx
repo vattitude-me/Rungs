@@ -12,6 +12,7 @@ import {
   isNative, requestNotificationPermission, hasNotificationPermission,
   scheduleWindowReminders, cancelWindowReminders,
 } from '../engine/notifications';
+import { installPlatform } from '../engine/install';
 import { generateDayPlan, rebuildTodayWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor, daysBetweenDates } from '../engine/dates';
 import { shouldRebaseline } from '../engine/coach';
@@ -83,6 +84,16 @@ export default function Settings() {
   const daysSinceTest = daysBetweenDates(testedOn, today);
   const retestDue = shouldRebaseline(profile.lastRebaselineAt, today, localDate(new Date(profile.createdAt)));
   const lastTestedLabel = daysSinceTest <= 0 ? 'today' : daysSinceTest === 1 ? 'yesterday' : `${daysSinceTest} days ago`;
+
+  // What "install" is called on the platform in front of the user. iPhones add
+  // to the Home Screen, Macs add to the Dock, and everyone else installs -
+  // telling a desktop user to find their Home Screen would send them looking
+  // for a menu that isn't there.
+  const platform = installPlatform(false);
+  const installVerb =
+    platform === 'ios' ? 'Add to your Home Screen'
+    : platform === 'macos-safari' ? 'Add to your Dock'
+    : 'Install the app';
 
   const saveName = async () => {
     const n = nameDraft.trim().slice(0, 24);
@@ -356,7 +367,7 @@ export default function Settings() {
                     : account && pushReady
                       ? '5 minutes before each window'
                       : needsInstall
-                        ? 'Add to Home Screen first, then sign in'
+                        ? `${installVerb} first, then sign in`
                         : account
                           ? '5 minutes before each window, while the app is open'
                           : 'Sign in to get reminders while the app is closed'

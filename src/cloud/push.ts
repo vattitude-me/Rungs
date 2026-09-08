@@ -4,6 +4,7 @@ import { getMessaging, getToken, isSupported, type Messaging } from 'firebase/me
 import { cloudDb } from './firebase';
 import { vapidKey } from './config';
 import { deviceId, deviceLabel } from './device';
+import { isInstalled } from '../engine/install';
 
 /** Where a browser's push token lives. Tokens are per-browser-install, so
  * they're keyed by the same device id the backup uses - one row per device,
@@ -33,19 +34,18 @@ export async function pushSupported(): Promise<boolean> {
   return isSupported().catch(() => false);
 }
 
-/** True on an iOS browser that supports push only once installed to the Home
- * Screen, and hasn't been. The UI uses this to explain the extra step rather
- * than offering a toggle that can't work. */
+/** True on a browser where installing is what stands between the user and
+ * working reminders. The UI uses this to explain the extra step rather than
+ * offering a toggle that can't deliver.
+ *
+ * iOS is the strict case - Safari exposes the Push API only to Home Screen
+ * apps, so a tab cannot be registered at all. Elsewhere a tab technically can
+ * register, but the notifications then belong to the browser and stop when it
+ * does, which is not what someone turning on window reminders is asking for.
+ * Both answers point at the same fix, so they share one flag. */
 export function needsHomeScreenInstall(): boolean {
   if (typeof window === 'undefined') return false;
-  const ua = navigator.userAgent;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) ||
-    // iPadOS 13+ reports itself as a Mac; touch points give it away.
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (!isIOS) return false;
-  const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-    (navigator as { standalone?: boolean }).standalone === true;
-  return !standalone;
+  return !isInstalled();
 }
 
 function messaging(): Messaging {
