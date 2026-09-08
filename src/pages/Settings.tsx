@@ -61,6 +61,10 @@ export default function Settings() {
   // holding it back until the app is installed to the Home Screen.
   const [pushReady, setPushReady] = useState(false);
   const [needsInstall, setNeedsInstall] = useState(false);
+  // Whether this device actually has a push token on the account. Null until
+  // known. Distinct from the reminders setting: the setting is what the user
+  // asked for, this is whether the server can honour it.
+  const [pushRegistered, setPushRegistered] = useState<boolean | null>(null);
   const [editingWindow, setEditingWindow] = useState<number | null>(null);
   const [windowDraft, setWindowDraft] = useState('');
   const [notifPermission, setNotifPermission] = useState<NotifState>(
@@ -82,6 +86,33 @@ export default function Settings() {
       setNeedsInstall(push.needsHomeScreenInstall());
     });
   }, []);
+
+  // Registering only inside the toggle was not enough. The four things push
+  // needs - reminders on, signed in, installed, permission granted - are each
+  // switched on from a different place and in any order, and whichever came
+  // last was the only one with a chance to register. Someone who had
+  // reminders on before they installed, or before they signed in, would never
+  // toggle again and so never get a token: the app looked entirely correct
+  // and the server had nowhere to send.
+  //
+  // So reconcile instead of relying on an event. Whenever all four hold and
+  // this device has no token, get one.
+  useEffect(() => {
+    if (isNative()) return;
+    if (!account || !settings?.reminders) return;
+    if (notifPermission !== 'granted') return;
+    let cancelled = false;
+    void (async () => {
+      const push = await import('../cloud/push');
+      if (cancelled || !(await push.pushSupported())) return;
+      const ok = await push.registerPush(account.uid).catch((e: unknown) => {
+        console.error('[rungs] push registration failed:', e);
+        return false;
+      });
+      if (!cancelled) setPushRegistered(ok);
+    })();
+    return () => { cancelled = true; };
+  }, [account, settings?.reminders, notifPermission]);
 
   // Every hook must run before this point. An early return sitting above a
   // useEffect makes the hook count change the moment the data lands, which is
@@ -174,8 +205,19 @@ export default function Settings() {
     if (account) {
       const push = await import('../cloud/push');
       if (await push.pushSupported()) {
-        if (turningOn) await push.registerPush(account.uid).catch(() => false);
-        else await push.unregisterPush(account.uid);
+        if (turningOn) {
+          // Surfaced, not swallowed: a token that fails to register is the
+          // difference between getting reminders and silently never getting
+          // them, and the user has just asked for them by name.
+          const ok = await push.registerPush(account.uid).catch((e: unknown) => {
+            console.error('[rungs] push registration failed:', e);
+            return false;
+          });
+          setPushRegistered(ok);
+        } else {
+          await push.unregisterPush(account.uid);
+          setPushRegistered(false);
+        }
       }
     }
 
@@ -367,6 +409,10 @@ export default function Settings() {
                     // In a browser nothing of the app runs once the tab is
                     // closed, so reminders only survive that if they're pushed
                     // from the server - which needs an account.
+                    // Registered is the only state that actually earns the
+                    // plain promise - the rest have a caveat the user needs.
+                    : account && pushReady && pushRegistered === false
+                      ? 'Could not register this device for reminders'
                     : account && pushReady
                       ? '5 minutes before each window'
                       : needsInstall

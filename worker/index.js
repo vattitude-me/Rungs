@@ -145,7 +145,108 @@ function dueWindow(profile, now) {
   return null;
 }
 
-async function sendToUser(db, messaging, userDoc, now) {
+/** The window a manual trigger should pretend is due: the next one still
+ * ahead today, or the first of tomorrow if the day is done. Picking a real
+ * window rather than inventing one keeps the notification text honest - it
+ * names reps the user is actually going to be asked for. */
+function forcedWindow(profile, now) {
+  const timeZone = profile.timeZone || 'UTC';
+  let times = Array.isArray(profile.windowTimes) ? [...profile.windowTimes] : null;
+  if (!times || times.length === 0) {
+    const count = profile.windowCount || 4;
+    times = evenTimes(count, profile.wake || '06:30', profile.sleep || '23:00');
+  }
+  times.sort((a, b) => a.localeCompare(b));
+  if (times.length === 0) return null;
+
+  let nowMinutes;
+  try {
+    nowMinutes = localMinutes(now, timeZone);
+  } catch {
+    nowMinutes = 0;
+  }
+
+  const index = times.findIndex((t) => {
+    const [h, m] = t.split(':').map(Number);
+    return !Number.isNaN(h) && h * 60 + m >= nowMinutes;
+  });
+  const pick = index === -1 ? 0 : index;
+  return { index: pick, at: times[pick], count: times.length, date: localDate(now, timeZone) };
+}
+
+/** Explains, per account, whether a reminder could be sent right now and what
+ * is missing if not.
+ *
+ * A worker that only prints when it sends is quiet for two very different
+ * reasons - nothing was due, or nothing *can ever* be due - and from the
+ * outside those look identical. This tells them apart. */
+async function diagnose(db, now) {
+  const users = await db.collection('users').get();
+  console.log(`[rungs] diagnose at ${now.toISOString()} - ${users.size} account(s)`);
+
+  for (const userDoc of users.docs) {
+    const uid = userDoc.id;
+    const tokensSnap = await db.collection('users').doc(uid).collection('pushTokens').get();
+
+    const profileSnap = await db
+      .collection('users').doc(uid)
+      .collection('backup').doc('profile')
+      .collection('chunks').get();
+    const profile = profileSnap.docs
+      .flatMap((d) => d.data().rows ?? [])
+      .find((row) => row && row.onboardingComplete);
+
+    console.log(`\n  account ${uid}`);
+    console.log(`    devices registered for push : ${tokensSnap.size}`);
+    for (const t of tokensSnap.docs) {
+      const d = t.data();
+      console.log(`      - ${d.label ?? t.id} (last window sent: ${d.lastWindow ?? 'none'})`);
+    }
+
+    if (!profile) {
+      console.log('    profile                     : MISSING from the backup');
+      console.log('    -> the app has not synced a completed profile for this account.');
+      continue;
+    }
+
+    console.log(`    name                        : ${profile.name ?? '(unset)'}`);
+    console.log(`    timeZone                    : ${profile.timeZone ?? 'MISSING'}`);
+    const times = Array.isArray(profile.windowTimes) && profile.windowTimes.length
+      ? [...profile.windowTimes].sort((a, b) => a.localeCompare(b))
+      : evenTimes(profile.windowCount || 4, profile.wake || '06:30', profile.sleep || '23:00');
+    console.log(`    windows                     : ${times.join(', ')}`);
+
+    if (profile.timeZone) {
+      try {
+        const mins = localMinutes(now, profile.timeZone);
+        const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+        const mm = String(mins % 60).padStart(2, '0');
+        console.log(`    local time there            : ${hh}:${mm}`);
+      } catch {
+        console.log('    local time there            : unreadable timezone');
+      }
+    }
+
+    const due = dueWindow(profile, now);
+    console.log(`    a window due this tick      : ${due ? `yes, ${due.at}` : 'no'}`);
+
+    // The blockers, in the order they stop a send.
+    if (tokensSnap.empty) {
+      console.log('    -> BLOCKED: no device is registered for push.');
+      console.log('       In the installed app: Settings > Window reminders (toggle on).');
+      console.log('       It must be the installed app, and signed in to this account.');
+    } else if (!profile.timeZone) {
+      console.log('    -> BLOCKED: no timeZone recorded; open the app once to set it.');
+    } else if (!due) {
+      console.log(`       (nothing wrong - reminders fire ${LEAD_MINUTES}m before a window,`);
+      console.log(`        within a ${TICK_MINUTES}m tick. Use --send-now to test immediately.)`);
+    } else {
+      console.log('    -> would send now.');
+    }
+  }
+}
+
+async function sendToUser(db, messaging, userDoc, now, opts = {}) {
   const uid = userDoc.id;
 
   const tokensSnap = await db.collection('users').doc(uid).collection('pushTokens').get();
@@ -162,7 +263,11 @@ async function sendToUser(db, messaging, userDoc, now) {
     .find((row) => row && row.onboardingComplete);
   if (!profile) return { sent: 0, pruned: 0 };
 
-  const due = dueWindow(profile, now);
+  // `force` is the manual trigger: it pretends the next window is due right
+  // now so a real notification goes down the real path. Everything after this
+  // line is identical to a scheduled send - that's the point, a test that
+  // skipped the send path would only prove the test works.
+  const due = opts.force ? forcedWindow(profile, now) : dueWindow(profile, now);
   if (!due) return { sent: 0, pruned: 0 };
 
   const targets = computeTierTargets(
@@ -181,7 +286,7 @@ async function sendToUser(db, messaging, userDoc, now) {
     if (!data.token) continue;
     // Already nudged for this window on this device - a retried tick or a
     // second worker must not send it twice.
-    if (data.lastWindow === marker) continue;
+    if (!opts.force && data.lastWindow === marker) continue;
 
     try {
       await messaging.send({
@@ -220,7 +325,7 @@ async function sendToUser(db, messaging, userDoc, now) {
   return { sent, pruned };
 }
 
-async function tick(db, messaging) {
+async function tick(db, messaging, opts = {}) {
   const now = new Date();
   const users = await db.collection('users').get();
 
@@ -228,7 +333,7 @@ async function tick(db, messaging) {
   let pruned = 0;
   for (const userDoc of users.docs) {
     try {
-      const result = await sendToUser(db, messaging, userDoc, now);
+      const result = await sendToUser(db, messaging, userDoc, now, opts);
       sent += result.sent;
       pruned += result.pruned;
     } catch (err) {
@@ -237,8 +342,14 @@ async function tick(db, messaging) {
     }
   }
 
-  if (sent || pruned) {
+  // A forced run always reports, including zero: the person who typed
+  // --send-now is owed an answer either way, where a scheduled tick finding
+  // nothing is just a quiet night.
+  if (sent || pruned || opts.force) {
     console.log(`[rungs] ${now.toISOString()} sent=${sent} pruned=${pruned} users=${users.size}`);
+    if (opts.force && !sent) {
+      console.log('[rungs] nothing was sent - run --diagnose to see what is missing.');
+    }
   }
 }
 
@@ -271,8 +382,18 @@ async function main() {
   const db = getFirestore();
   const messaging = getMessaging();
 
-  const once = process.argv.includes('--once');
-  if (once) {
+  // Manual controls, for confirming the pipeline end to end without waiting
+  // for a real window to come round.
+  if (process.argv.includes('--diagnose')) {
+    await diagnose(db, new Date());
+    return;
+  }
+  if (process.argv.includes('--send-now')) {
+    console.log('[rungs] forcing a send, ignoring the schedule');
+    await tick(db, messaging, { force: true });
+    return;
+  }
+  if (process.argv.includes('--once')) {
     await tick(db, messaging);
     return;
   }
