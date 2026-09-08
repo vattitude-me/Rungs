@@ -185,3 +185,64 @@ export async function cancelWindowReminders(plan: DayPlan): Promise<void> {
   if (!isNative()) return;
   await clearScheduled(plan);
 }
+
+/** Friend nudges get their own Android channel, so they can be silenced
+ * without losing window reminders. Someone who wants training prompts but not
+ * social ones should be able to say so with the OS's own controls rather than
+ * by turning the feature off. */
+const SQUAD_CHANNEL_ID = 'squad';
+
+/** Notification ids for nudges, drawn from a range the window scheduler
+ * doesn't use so the two can never collide and cancel each other. */
+function nudgeNotificationId(key: string): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return 2_000_000 + (Math.abs(hash) % 1_000_000);
+}
+
+export interface FriendNudge {
+  id: string;
+  title: string;
+  body: string;
+}
+
+/** Shows friend nudges that arrived while the app is open.
+ *
+ * Native only. On the web the push worker delivers these, and raising them
+ * here as well would show every nudge twice.
+ *
+ * Fired immediately rather than scheduled: the nudge has already happened, and
+ * the notification is how the user finds out. Silent on failure - a missed
+ * nudge notification is a small thing, and the item is still in Squad.
+ */
+export async function showFriendNudges(nudges: FriendNudge[]): Promise<void> {
+  if (!isNative() || nudges.length === 0) return;
+  if (!(await hasNotificationPermission())) return;
+
+  try {
+    await LocalNotifications.createChannel({
+      id: SQUAD_CHANNEL_ID,
+      name: 'Squad',
+      description: 'Nudges and friend requests from people you train with',
+      importance: 4,
+      visibility: 1,
+    });
+  } catch {
+    // Android-only; harmless elsewhere.
+  }
+
+  try {
+    await LocalNotifications.schedule({
+      notifications: nudges.map((n) => ({
+        id: nudgeNotificationId(n.id),
+        title: n.title,
+        body: n.body,
+        channelId: SQUAD_CHANNEL_ID,
+        extra: { url: '/squad' },
+      })),
+    });
+  } catch {
+    // Permission revoked between the check and the schedule, or the OS
+    // refused. Squad still shows the nudge.
+  }
+}

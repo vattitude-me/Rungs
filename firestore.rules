@@ -1,17 +1,131 @@
 rules_version = '2';
 
-// Rungs cloud backup.
+// Rungs cloud backup and friends.
 //
-// The entire data model is one subtree per user, and the only rule that
-// matters is that a user can reach nothing but their own. There is no shared
-// or public data here, so nothing grants read access to anyone else - not
-// even authenticated users, who are still strangers with respect to each
-// other's workout history.
+// The workout history is still one subtree per user that nobody else can
+// reach. Friends did not change that, and the shape of these rules is what
+// keeps it true: rather than opening `users/{uid}` to friends, the small
+// amount of data meant to be shared was moved *out* into its own collection.
+//
+// So there are two tiers, and the split is deliberate:
+//
+//   profiles/{uid}   - name, invite code, today's percent, streak. Readable by
+//                      any signed-in user. This is the entire sharing surface.
+//   users/{uid}/**   - everything else: sets, plans, baselines, tokens. Owner
+//                      only, with two narrow exceptions below that exist so a
+//                      friend request can arrive without the recipient being
+//                      online to receive it.
+//
+// The exceptions are the part worth reading carefully, because they are the
+// only writes one user may make into another's subtree.
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // The shareable half of an account.
+    //
+    // Readable by anyone signed in, which is what lets a friend show a name
+    // and a ring. It is not readable by the public internet, and it holds
+    // nothing beyond what a friend is meant to see - no email, no schedule, no
+    // history. Writable only by its owner, so nobody can inflate someone
+    // else's numbers or rename them.
+    match /profiles/{uid} {
+      allow read: if signedIn();
+      allow write: if isOwner(uid);
+    }
+
+    // Invite code to uid. Readable by any signed-in user, because redeeming a
+    // code *is* a read of it by someone who is by definition not the owner.
+    //
+    // Creation is allowed only when the document names the creator, so a user
+    // can claim a free code but cannot point an existing one at themselves and
+    // hijack the requests meant for someone else. Updates are refused outright
+    // for the same reason: a code, once claimed, belongs to that account until
+    // it is deleted.
+    match /inviteCodes/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if isOwner(uid);
+
+      // Friend edges. Owner-readable, and writable by the owner *or* by the
+      // user the edge names.
+      //
+      // That second case is what completes a friendship in one step: when B
+      // accepts A's request, B writes both B's edge and A's. A is not
+      // necessarily online, and requiring them to be would mean a request that
+      // only completes if both people happen to have the app open.
+      //
+      // It is narrow on purpose - the writer may only create an edge that
+      // names themselves, at their own uid as the document id, so the worst a
+      // malicious client can do is add itself to someone's friend list, which
+      // is the same thing accepting does. It cannot read that list, edit any
+      // other edge, or touch anything else in the subtree.
+      match /friends/{friendUid} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+          || (isOwner(friendUid) && request.resource.data.uid == request.auth.uid);
+        allow update: if isOwner(uid);
+        // Either side may end a friendship, and removing it from both lists is
+        // what makes "remove" actually stop the nudges.
+        allow delete: if isOwner(uid) || isOwner(friendUid);
+      }
+
+      // Incoming friend requests and nudges.
+      //
+      // The only collection another user may write to. Everything about the
+      // shape is constrained, because an unconstrained write here would be a
+      // way to put arbitrary text in front of someone and into a push
+      // notification body:
+      //
+      //   - the sender must name themselves accurately (fromUid == auth.uid),
+      //     so a nudge cannot be forged as coming from someone else
+      //   - `kind` is one of two known values
+      //   - `phrase` must be one of the fixed vocabulary the app offers. This
+      //     is the rule that makes free text impossible rather than merely
+      //     absent from the UI: a modified client still cannot send anything
+      //     the app did not define.
+      //   - no field may carry a name longer than a display name needs
+      //
+      // Only the recipient reads or deletes. A sender cannot check whether
+      // their request is still pending, which is intentional: read access here
+      // would expose who else has been in touch.
+      match /inbox/{itemId} {
+        allow read, delete: if isOwner(uid);
+
+        allow create, update: if signedIn()
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.kind in ['request', 'nudge']
+          && request.resource.data.fromName is string
+          && request.resource.data.fromName.size() <= 60
+          && (
+            // `in` against the map tests key presence directly. A friend
+            // request carries no phrase, so its absence has to be allowed -
+            // but if one is present it must be from the fixed list.
+            !('phrase' in request.resource.data)
+            || request.resource.data.phrase in [
+              'poke', 'getafterit', 'yourturn', 'catchup',
+              'proud', 'dontbreak', 'accepted'
+            ]
+          );
+      }
+
+      // The sender's own tally of nudges sent per friend per day. Private to
+      // the sender; the cap it enforces is what keeps a nudge a nudge.
+      match /nudgeLog/{entry} {
+        allow read, write: if isOwner(uid);
+      }
 
       // The synced records live beneath the user document, one per row, at
       // users/{uid}/records/{table}~{id}. Reads are range queries over `seq`,
@@ -19,10 +133,18 @@ service cloud.firestore {
       // automatic single-field index - no composite index has to be deployed
       // for this to work.
       //
-      // The same ownership check applies at every depth, so a nested path
-      // can't be used to sidestep it.
+      // This also matches friends, inbox and nudgeLog, which is harmless:
+      // overlapping match statements combine with OR, so a request is allowed
+      // if any matching rule allows it. This one grants the owner access at
+      // every depth; the narrower rules above are what additionally let a
+      // *friend* write, and nothing here can take that away or widen it.
+      //
+      // Stated plainly because the reverse is a natural assumption: a more
+      // specific rule does not override a broader one, so a restriction can
+      // never be expressed by narrowing a path. Anything that must be denied
+      // has to be denied by every rule that matches it.
       match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read, write: if isOwner(uid);
       }
     }
   }

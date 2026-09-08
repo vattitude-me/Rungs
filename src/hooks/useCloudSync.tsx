@@ -25,6 +25,42 @@ const Ctx = createContext<CloudContext | null>(null);
 
 const IDLE: SyncState = { status: 'idle', lastSyncedAt: 0 };
 
+/** Publishes the handful of figures a friend is allowed to see.
+ *
+ * Everything here is recomputed from the local tables rather than passed in,
+ * so the number a friend sees is the same one the user's own Today screen
+ * draws - percent of the day's tier, from the same set logs.
+ *
+ * Silent on failure by design. This is a courtesy write for a side tab; the
+ * backup has already succeeded by the time it runs, and reporting an error
+ * from it would tell the user their data didn't save when it did.
+ */
+async function publishSharedProfile(uid: string): Promise<void> {
+  try {
+    const [{ getProfile, getSetLogs, getDayPlan, getStreak }, dates, friends] = await Promise.all([
+      import('../db'),
+      import('../engine/dates'),
+      import('../cloud/friends'),
+    ]);
+
+    const profile = await getProfile();
+    if (!profile?.onboardingComplete) return;
+
+    const today = dates.localDate();
+    const [logs, plan, streak] = await Promise.all([
+      getSetLogs(today), getDayPlan(today), getStreak(),
+    ]);
+
+    const done = logs.reduce((sum, log) => sum + log.reps, 0);
+    const goal = plan?.tier ?? profile.tier ?? 100;
+    const percent = goal > 0 ? (100 * done) / goal : 0;
+
+    await friends.publishProfile(uid, profile.name, percent, streak.current, today);
+  } catch {
+    // Not signed up for friends, offline, or rules not yet deployed.
+  }
+}
+
 /** How close together two automatic sync passes may run. Returning to the app
  * should refresh it, but tabbing away and back a few times shouldn't cost a
  * round trip each time. Short enough that "open the app and it's current"
@@ -81,6 +117,12 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
       auto.markPushed(result.watermark);
       auto.markSynced(startedAt);
       setState({ status: 'idle', lastSyncedAt: startedAt });
+
+      // Refresh the small public document friends read. Deliberately after the
+      // sync rather than inside it: it shares no data the sync doesn't already
+      // hold, and a failure here - rules, offline, a first run before the
+      // profile exists - must not mark the backup itself as failed.
+      void publishSharedProfile(uid);
 
       // Merged rows replace what the running app already read into memory, so
       // the screens have to be rebuilt from the new database. Only when the
@@ -187,7 +229,14 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
     deleting.current = true;
     setState({ status: 'syncing' });
     try {
-      const [auth, cloud, auto] = await Promise.all([authModule(), syncModule(), autoModule()]);
+      const [auth, cloud, auto, friends] = await Promise.all([
+        authModule(), syncModule(), autoModule(), import('../cloud/friends'),
+      ]);
+      // Before the backup, because this reaches outside the user's own subtree
+      // - the public profile, the invite code, and the far side of every
+      // friendship. Those are the parts nobody else can clean up afterwards,
+      // and they must go while the user is still authenticated.
+      await friends.deleteFriendData(account.uid);
       await cloud.deleteBackup(account.uid);
       await auth.deleteAccount();
       auto.resetChangeMarks();

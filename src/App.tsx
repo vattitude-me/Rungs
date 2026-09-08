@@ -6,6 +6,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { getProfile, saveProfile } from './db';
 import { useReminders } from './hooks/useReminders';
 import { useAndroidBackButton } from './hooks/useAndroidBackButton';
+import { useNudgeNotifications } from './hooks/useNudgeNotifications';
 import type { Profile } from './types';
 import PhoneFrame from './components/PhoneFrame';
 import Layout from './components/Layout';
@@ -24,6 +25,13 @@ import DataPrivacy from './pages/DataPrivacy';
 import Retest from './pages/Retest';
 import Sync from './pages/Sync';
 import { CloudSyncProvider } from './hooks/useCloudSync';
+
+/** Hooks that need the cloud context, so they sit inside the provider rather
+ * than beside it. */
+function CloudSideEffects() {
+  useNudgeNotifications();
+  return null;
+}
 
 export default function App() {
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
@@ -74,6 +82,7 @@ export default function App() {
 
   return (
     <CloudSyncProvider>
+      <CloudSideEffects />
       <PhoneFrame>
         <Routes>
           <Route path="/onboarding/welcome" element={<Welcome />} />
