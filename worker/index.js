@@ -174,6 +174,51 @@ function forcedWindow(profile, now) {
   return { index: pick, at: times[pick], count: times.length, date: localDate(now, timeZone) };
 }
 
+/** Reads the account's profile, whichever format it is stored in.
+ *
+ * The app moved from one chunked document per table
+ * (users/{uid}/backup/{table}/chunks) to one document per row
+ * (users/{uid}/records/{table}~{id}) and deletes the old copy once a device
+ * has migrated it. The worker has to read both, and in that order: a migrated
+ * account has only records, an account whose devices have not synced since
+ * the change has only chunks, and one caught mid-migration briefly has both -
+ * where the record is the newer of the two.
+ *
+ * Reading only the legacy path is what made every reminder here silently
+ * wrong rather than absent: the chunks survive as a snapshot frozen at the
+ * moment sync last wrote them, so the worker kept answering with a real
+ * profile carrying stale windows and no timeZone, and looked from the outside
+ * like a user who had never set one.
+ */
+async function loadProfile(db, uid) {
+  const record = await db
+    .collection('users').doc(uid)
+    .collection('records').doc('profile~singleton').get();
+  if (record.exists) {
+    const data = record.data();
+    // A tombstoned profile is a deleted account, not a profile to send to.
+    if (!data.deletedAt && data.row && data.row.onboardingComplete) return data.row;
+  }
+
+  // Any profile record, in case the row was keyed by something other than the
+  // singleton id on an older build.
+  const anyRecord = await db
+    .collection('users').doc(uid)
+    .collection('records').where('table', '==', 'profile').limit(5).get();
+  for (const d of anyRecord.docs) {
+    const data = d.data();
+    if (!data.deletedAt && data.row && data.row.onboardingComplete) return data.row;
+  }
+
+  const chunks = await db
+    .collection('users').doc(uid)
+    .collection('backup').doc('profile')
+    .collection('chunks').get();
+  return chunks.docs
+    .flatMap((d) => d.data().rows ?? [])
+    .find((row) => row && row.onboardingComplete) ?? null;
+}
+
 /** Explains, per account, whether a reminder could be sent right now and what
  * is missing if not.
  *
@@ -188,13 +233,7 @@ async function diagnose(db, now) {
     const uid = userDoc.id;
     const tokensSnap = await db.collection('users').doc(uid).collection('pushTokens').get();
 
-    const profileSnap = await db
-      .collection('users').doc(uid)
-      .collection('backup').doc('profile')
-      .collection('chunks').get();
-    const profile = profileSnap.docs
-      .flatMap((d) => d.data().rows ?? [])
-      .find((row) => row && row.onboardingComplete);
+    const profile = await loadProfile(db, uid);
 
     console.log(`\n  account ${uid}`);
     console.log(`    devices registered for push : ${tokensSnap.size}`);
@@ -204,7 +243,7 @@ async function diagnose(db, now) {
     }
 
     if (!profile) {
-      console.log('    profile                     : MISSING from the backup');
+      console.log('    profile                     : MISSING (no record, no legacy chunk)');
       console.log('    -> the app has not synced a completed profile for this account.');
       continue;
     }
@@ -252,15 +291,9 @@ async function sendToUser(db, messaging, userDoc, now, opts = {}) {
   const tokensSnap = await db.collection('users').doc(uid).collection('pushTokens').get();
   if (tokensSnap.empty) return { sent: 0, pruned: 0 };
 
-  // The profile lives in the backup, written by the app itself - the worker
-  // never has to be told a schedule separately.
-  const profileSnap = await db
-    .collection('users').doc(uid)
-    .collection('backup').doc('profile')
-    .collection('chunks').get();
-  const profile = profileSnap.docs
-    .flatMap((d) => d.data().rows ?? [])
-    .find((row) => row && row.onboardingComplete);
+  // The profile is written by the app's own sync, so the worker never has to
+  // be told a schedule separately.
+  const profile = await loadProfile(db, uid);
   if (!profile) return { sent: 0, pruned: 0 };
 
   // `force` is the manual trigger: it pretends the next window is due right
@@ -325,6 +358,115 @@ async function sendToUser(db, messaging, userDoc, now, opts = {}) {
   return { sent, pruned };
 }
 
+/** The canned phrases a friend can send, mirrored from src/cloud/friends.ts.
+ *
+ * Duplicated rather than imported because the worker is a separate deployable
+ * with no build step over the app's source. The Firestore rules enforce the
+ * same list, so an unknown id here means a client wrote something the rules
+ * should have refused - it falls back to the neutral phrase rather than
+ * putting an unrecognised string into a notification body. */
+const NUDGE_PHRASES = {
+  poke: 'nudged you',
+  getafterit: 'says get after it',
+  yourturn: "says it's your turn",
+  catchup: 'is ahead of you today',
+  proud: 'is proud of you',
+  dontbreak: "says don't break the streak",
+  accepted: 'accepted your friend request',
+};
+
+/** Delivers friend nudges sitting in inboxes.
+ *
+ * Nudges are pushed from here rather than written straight to the recipient's
+ * device because only this worker holds credentials that can send FCM. The
+ * inbox document is the queue: the app writes it (the rules permit exactly
+ * that shape and nothing else), and this marks it delivered rather than
+ * deleting it, so the recipient still sees the nudge in Squad when they open
+ * the app - the notification is the announcement, not the message itself.
+ *
+ * A nudge nobody has a token for is left alone rather than dropped. The person
+ * may install the app tomorrow, and the item is still theirs to read.
+ */
+async function deliverNudges(db, messaging, opts = {}) {
+  const users = await db.collection('users').get();
+  let sent = 0;
+  let pruned = 0;
+
+  for (const userDoc of users.docs) {
+    const uid = userDoc.id;
+    let pending;
+    try {
+      pending = await db.collection('users').doc(uid).collection('inbox').get();
+    } catch (err) {
+      console.error(`[rungs] inbox read failed for ${uid}:`, err?.message ?? err);
+      continue;
+    }
+    if (pending.empty) continue;
+
+    const undelivered = pending.docs.filter((d) => {
+      const data = d.data();
+      // `force` re-sends whatever is there, for testing the path end to end.
+      return opts.force ? true : !data.pushedAt;
+    });
+    if (undelivered.length === 0) continue;
+
+    const tokensSnap = await db.collection('users').doc(uid).collection('pushTokens').get();
+    if (tokensSnap.empty) continue;
+
+    for (const item of undelivered) {
+      const data = item.data();
+      const from = data.fromName || 'A friend';
+      const isRequest = data.kind === 'request';
+      const title = isRequest ? 'Friend request' : 'Rungs';
+      const body = isRequest
+        ? `${from} wants to be friends`
+        // The phrase is a lookup, never the raw stored value, so nothing a
+        // client wrote can reach a notification body verbatim.
+        : `${from} ${NUDGE_PHRASES[data.phrase] ?? NUDGE_PHRASES.poke}`;
+
+      let delivered = false;
+      for (const tokenDoc of tokensSnap.docs) {
+        const token = tokenDoc.data().token;
+        if (!token) continue;
+        try {
+          await messaging.send({
+            token,
+            data: {
+              title,
+              body,
+              tag: `rungs-squad-${item.id}`,
+              url: '/squad',
+            },
+            webpush: { headers: { Urgency: 'normal', TTL: '86400' } },
+          });
+          delivered = true;
+          sent++;
+        } catch (err) {
+          const code = err?.errorInfo?.code ?? err?.code ?? '';
+          if (
+            code.includes('registration-token-not-registered') ||
+            code.includes('invalid-argument') ||
+            code.includes('invalid-registration-token')
+          ) {
+            await tokenDoc.ref.delete().catch(() => {});
+            pruned++;
+          } else {
+            console.error(`[rungs] nudge send failed for ${uid}:`, code || err);
+          }
+        }
+      }
+
+      // Marked only when a device actually took it, so a nudge queued while
+      // the recipient had no registered device is delivered once they do.
+      if (delivered) {
+        await item.ref.update({ pushedAt: FieldValue.serverTimestamp() }).catch(() => {});
+      }
+    }
+  }
+
+  return { sent, pruned };
+}
+
 async function tick(db, messaging, opts = {}) {
   const now = new Date();
   const users = await db.collection('users').get();
@@ -342,12 +484,24 @@ async function tick(db, messaging, opts = {}) {
     }
   }
 
+  // Friend nudges ride the same tick. They are not scheduled - they are
+  // whatever arrived since the last pass - so they are checked every time
+  // rather than only when a window is due.
+  let nudged = 0;
+  try {
+    const result = await deliverNudges(db, messaging, opts);
+    nudged = result.sent;
+    pruned += result.pruned;
+  } catch (err) {
+    console.error('[rungs] nudge delivery failed:', err?.message ?? err);
+  }
+
   // A forced run always reports, including zero: the person who typed
   // --send-now is owed an answer either way, where a scheduled tick finding
   // nothing is just a quiet night.
-  if (sent || pruned || opts.force) {
-    console.log(`[rungs] ${now.toISOString()} sent=${sent} pruned=${pruned} users=${users.size}`);
-    if (opts.force && !sent) {
+  if (sent || pruned || nudged || opts.force) {
+    console.log(`[rungs] ${now.toISOString()} sent=${sent} nudged=${nudged} pruned=${pruned} users=${users.size}`);
+    if (opts.force && !sent && !nudged) {
       console.log('[rungs] nothing was sent - run --diagnose to see what is missing.');
     }
   }
