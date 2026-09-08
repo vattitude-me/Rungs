@@ -75,6 +75,17 @@ export default function Settings() {
     });
   }, []);
 
+  useEffect(() => {
+    if (isNative()) return;
+    void import('../cloud/push').then(async (push) => {
+      setPushReady(await push.pushSupported());
+      setNeedsInstall(push.needsHomeScreenInstall());
+    });
+  }, []);
+
+  // Every hook must run before this point. An early return sitting above a
+  // useEffect makes the hook count change the moment the data lands, which is
+  // React error #310 - and the first render here is always the empty one.
   if (!profile || !settings) return null;
 
   const initial = (profile.name.trim()[0] || 'A').toUpperCase();
@@ -142,14 +153,6 @@ export default function Settings() {
     setSettings(next);
     await saveSettings(next);
   };
-
-  useEffect(() => {
-    if (isNative()) return;
-    void import('../cloud/push').then(async (push) => {
-      setPushReady(await push.pushSupported());
-      setNeedsInstall(push.needsHomeScreenInstall());
-    });
-  }, []);
 
   const toggleReminders = async () => {
     const turningOn = !settings.reminders;
