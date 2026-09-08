@@ -13,35 +13,10 @@ function wasDismissed(): boolean {
 /** The account entry point on Today. Signed out it's an invitation; signed in
  * it's a status line that stays quiet unless something needs attention. */
 export default function CloudCard() {
-  const { account, state, conflict, signIn, resolve } = useCloudSync();
+  const { account, state, signIn, syncNow } = useCloudSync();
   const [dismissed, setDismissed] = useState(wasDismissed);
 
   if (!cloudConfigured || account === undefined) return null;
-
-  // Both sides hold real work. This is the one case that interrupts, because
-  // either choice throws away training the user actually did.
-  if (conflict) {
-    return (
-      <div className="flex flex-col gap-2.5 px-3.5 py-3.5 rounded-[14px] bg-surface shadow-sm border border-danger/30">
-        <div className="flex items-center gap-2">
-          <TriangleAlert size={14} className="text-danger flex-none" />
-          <span className="text-[13.5px] font-medium">Two devices, two histories</span>
-        </div>
-        <div className="text-[12.5px] leading-[1.5] text-neutral-400">
-          This phone and your backup both have reps the other doesn't. Keeping
-          one means losing the other's, so it's your call.
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" className="flex-1" onClick={() => void resolve('cloud')}>
-            Use the backup
-          </Button>
-          <Button variant="secondary" className="flex-1" onClick={() => void resolve('local')}>
-            Keep this phone
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   if (!account) {
     if (dismissed) return null;
@@ -52,8 +27,8 @@ export default function CloudCard() {
           <span className="flex-1 flex flex-col gap-0.5">
             <span className="text-[13.5px] font-medium">Save your streak</span>
             <span className="text-[12px] leading-[1.45] text-neutral-400">
-              Sign in and your reps back up as you go, then come straight back
-              on a new phone. Friends and squads are next.
+              Sign in and your reps sync as you go, so they're already there
+              on any phone you use. Friends and squads are next.
             </span>
           </span>
           <button
@@ -80,12 +55,20 @@ export default function CloudCard() {
     );
   }
 
-  // Signed in: a single quiet line. Nothing to act on unless it says otherwise.
+  // Signed in: a single quiet line, and a way to ask for a fresh copy.
+  //
+  // Syncing already happens on its own - on open, on returning to the app, on
+  // reconnecting, and after each set. The button isn't there because the user
+  // is expected to press it; it's there for the moment they've just deleted
+  // something on their phone, are looking at this screen, and want to see it
+  // gone now rather than trust that it will be. Without it the only honest
+  // answer to "is this up to date?" is "probably", which is not an answer
+  // someone checks a screen for.
   const label =
-    state.status === 'syncing' ? 'Saving…'
-    : state.status === 'offline' ? 'Offline · saves when you reconnect'
+    state.status === 'syncing' ? 'Syncing…'
+    : state.status === 'offline' ? 'Offline · syncs when you reconnect'
     : state.status === 'error' ? state.message
-    : 'Backed up';
+    : 'Synced';
 
   const Icon =
     state.status === 'syncing' ? RefreshCw
@@ -94,11 +77,21 @@ export default function CloudCard() {
     : Check;
 
   const tone = state.status === 'error' ? 'text-danger' : 'text-neutral-500';
+  const busy = state.status === 'syncing';
 
   return (
-    <div className={`flex items-center gap-1.75 px-1 ${tone}`}>
-      <Icon size={11.5} className={state.status === 'syncing' ? 'animate-spin' : ''} />
+    <button
+      type="button"
+      onClick={() => void syncNow()}
+      disabled={busy}
+      aria-label={busy ? 'Syncing' : 'Refresh from your other devices'}
+      className={`flex items-center gap-1.75 px-1 w-full text-left disabled:opacity-100 ${tone}`}
+    >
+      <Icon size={11.5} className={busy ? 'animate-spin' : ''} />
       <span className="text-[11.5px] leading-[1.4] flex-1 truncate">{label}</span>
-    </div>
+      {!busy && (
+        <RefreshCw size={10.5} className="flex-none text-neutral-600" aria-hidden />
+      )}
+    </button>
   );
 }

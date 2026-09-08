@@ -13,7 +13,31 @@ export type DashboardVariant = 'rings' | 'fuelBars';
 export type SetModel = 'ladder' | 'percent';
 export type WindowStatus = 'pending' | 'done' | 'missed' | 'reflowed';
 
-export interface Profile {
+/** Sync bookkeeping carried by every row that backs up.
+ *
+ * `updatedAt` is the whole of the merge rule: when two devices hold the same
+ * row, the one stamped later is the row. It's a plain device clock rather than
+ * a server timestamp because rows are written offline, long before any server
+ * sees them - and a set logged on a plane has to be comparable to one logged
+ * at home. Phone clocks are network-synced to within seconds of each other,
+ * and the only case where that margin matters is the same row edited on two
+ * devices inside the same second, which is a person on two phones at once.
+ *
+ * `deletedAt` marks a row the user removed. Deletes have to be recorded rather
+ * than done, because a row that merely vanished locally is indistinguishable
+ * from one this device has never seen - and the next merge would helpfully
+ * restore it. Carrying the delete as a stamped row means it merges by exactly
+ * the same rule as an edit.
+ */
+export interface Synced {
+  /** Optional at construction, always present once stored: every `save*` in
+   * the db layer stamps it on the way in, so a caller building a fresh row
+   * has nothing useful to say here and shouldn't have to invent a value. */
+  updatedAt?: number;
+  deletedAt?: number;
+}
+
+export interface Profile extends Synced {
   id: string;
   name: string;
   createdAt: number;
@@ -44,7 +68,7 @@ export interface Profile {
   tierStartedAt: string; // YYYY-MM-DD
 }
 
-export interface BaselineLog {
+export interface BaselineLog extends Synced {
   id: string;
   exercise: Exercise;
   maxReps: number;
@@ -64,7 +88,7 @@ export interface Window {
   status: WindowStatus;
 }
 
-export interface DayPlan {
+export interface DayPlan extends Synced {
   id: string;
   date: string; // YYYY-MM-DD
   dayIndex: number;
@@ -75,7 +99,7 @@ export interface DayPlan {
   tier: Tier;
 }
 
-export interface SetLog {
+export interface SetLog extends Synced {
   id: string;
   date: string;
   at: string;
@@ -89,7 +113,7 @@ export interface SetLog {
   completedAt: number;
 }
 
-export interface StreakData {
+export interface StreakData extends Synced {
   id: string;
   current: number;
   longest: number;
@@ -98,14 +122,14 @@ export interface StreakData {
   windowStartDate: string;
 }
 
-export interface DayRecord {
+export interface DayRecord extends Synced {
   date: string;
   exercises: Record<Exercise, { target: number; completed: number }>;
   totalVolumePct: number;
   streakCredit: boolean;
 }
 
-export interface AppSettings {
+export interface AppSettings extends Synced {
   id: string;
   counterVariant: CounterVariant;
   dashboardVariant: DashboardVariant;

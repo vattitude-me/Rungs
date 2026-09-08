@@ -1,17 +1,27 @@
-/** Tracks that local data has changed since the last successful upload, so
- * sync can tell "this device has work the cloud hasn't seen" apart from "this
- * device is empty and should download".
+/** Sync bookkeeping that has to survive a merge.
  *
- * Kept in localStorage rather than a Dexie table for the same reason the
- * device id is: a restore replaces every table, so a marker stored there would
- * be overwritten by the backup's own value.
+ * Kept in localStorage rather than a Dexie table because the tables themselves
+ * are what sync rewrites: a cursor stored beside the data would be overwritten
+ * by whatever the other device happened to have, and every device would then
+ * claim to have already seen every row.
  */
-const CHANGED_AT = 'rungs.changedAt';
+
+/** How far this device has read the cloud. It's the greatest `updatedAt` of any
+ * record pulled so far, so the next pull asks only for what's newer. Zero means
+ * "never pulled", which reads the account from the beginning - exactly what a
+ * fresh install on a new phone needs. */
+const PULL_CURSOR = 'rungs.pullCursor';
+
+/** How far this device has uploaded, as the greatest `updatedAt` of any local
+ * row already pushed. Kept apart from the pull cursor because the two count
+ * different clocks: local rows are stamped by this device, cloud rows by
+ * whichever device wrote them. Comparing one to the other would let a device
+ * whose clock runs slow decide it had already uploaded work it hadn't. */
+const PUSH_WATERMARK = 'rungs.pushWatermark';
+
+/** When the last full sync pass finished, for the UI's "last saved" line. This
+ * is display only; no merge decision reads it. */
 const SYNCED_AT = 'rungs.syncedAt';
-/** The backup generation this device is in step with - the `updatedAt` of the
- * backup it last pushed or pulled. Compared for equality, never ordering, so
- * it stays correct across devices whose clocks disagree. */
-const SYNCED_GENERATION = 'rungs.syncedGeneration';
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -28,78 +38,61 @@ function write(key: string, value: number): void {
   try {
     localStorage.setItem(key, String(value));
   } catch {
-    // Private-mode storage failures shouldn't break logging a set. Sync just
-    // falls back to treating the device as always-dirty for this session.
+    // Private-mode storage failures shouldn't break logging a set. A device
+    // that can't keep a cursor re-reads the account from scratch each session,
+    // which is slower but still correct - merging is idempotent.
   }
 }
 
-/** Called by every db write. Cheap by design - it runs on each logged set. */
+/** Called by every db write, so the auto-sync scheduler can debounce against
+ * real activity instead of polling. Cheap by design - it runs on each logged
+ * set. */
 export function markChanged(): void {
-  write(CHANGED_AT, Date.now());
   for (const fn of listeners) fn();
 }
 
-/** Called after a successful upload, recording that the cloud now matches.
- *
- * `at` must come from the same clock as `markChanged` - i.e. this device's -
- * because `hasUnsyncedChanges` compares the two directly. Passing a
- * server-derived timestamp here would mix clocks and, on a device running
- * slightly ahead, leave it looking permanently dirty.
- *
- * Pass the time the upload *started*: anything written while it was in flight
- * didn't make it into that upload and must still count as unsynced. */
-export function markSynced(at: number = Date.now()): void {
-  write(SYNCED_AT, at);
+export function pullCursor(): number {
+  return read(PULL_CURSOR);
 }
 
-export function lastChangedAt(): number {
-  return read(CHANGED_AT);
+/** Advances the read position. Only ever moves forward: an out-of-order or
+ * retried pull must not rewind the cursor and re-download the account. */
+export function markPulled(throughUpdatedAt: number): void {
+  if (throughUpdatedAt > pullCursor()) write(PULL_CURSOR, throughUpdatedAt);
+}
+
+export function pushWatermark(): number {
+  return read(PUSH_WATERMARK);
+}
+
+/** Advances the upload position. Forward-only for the same reason the pull
+ * cursor is: a retried pass must not rewind and re-upload the account. */
+export function markPushed(throughUpdatedAt: number): void {
+  if (throughUpdatedAt > pushWatermark()) write(PUSH_WATERMARK, throughUpdatedAt);
 }
 
 export function lastSyncedAt(): number {
   return read(SYNCED_AT);
 }
 
-/** Records which backup generation this device now matches, after a push or a
- * pull. */
-export function markGeneration(updatedAt: number): void {
-  write(SYNCED_GENERATION, updatedAt);
+export function markSynced(at: number = Date.now()): void {
+  write(SYNCED_AT, at);
 }
 
-export function syncedGeneration(): number {
-  return read(SYNCED_GENERATION);
-}
-
-/** True when this device holds writes the cloud hasn't got.
- *
- * A device that has never recorded a change but has never uploaded either is
- * treated as dirty rather than clean. Local data can predate this bookkeeping
- * entirely - anything logged before signing in, or before the sync feature
- * existed - and calling that "nothing to back up" would quietly strand a
- * user's whole history on one device. The caller pairs this with a check for
- * whether any data actually exists, so an empty install still doesn't push. */
-export function hasUnsyncedChanges(): boolean {
-  const changed = lastChangedAt();
-  const synced = lastSyncedAt();
-  if (changed === 0) return synced === 0;
-  return changed > synced;
-}
-
-/** Notifies on local writes, so the auto-sync scheduler can debounce against
- * real activity instead of polling. */
 export function onLocalChange(fn: Listener): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
 
-/** Forgets both marks. Used when signing out or resetting, so the next account
- * starts from a clean slate rather than inheriting someone else's clock. */
+/** Forgets this device's read position. Used when signing out or resetting, so
+ * the next account is read from the beginning instead of inheriting a cursor
+ * pointing into someone else's history. */
 export function resetChangeMarks(): void {
   try {
-    localStorage.removeItem(CHANGED_AT);
+    localStorage.removeItem(PULL_CURSOR);
+    localStorage.removeItem(PUSH_WATERMARK);
     localStorage.removeItem(SYNCED_AT);
-    localStorage.removeItem(SYNCED_GENERATION);
   } catch {
-    // Nothing to do; the marks are advisory.
+    // Nothing to do; the cursor is an optimisation, not a correctness input.
   }
 }

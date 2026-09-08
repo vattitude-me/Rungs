@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { cloudConfigured } from '../cloud/config';
 import type { CloudAccount } from '../cloud/auth';
-import type { SyncDirection, SyncState } from '../cloud/autosync';
+import type { SyncState } from '../cloud/autosync';
 
 const authModule = () => import('../cloud/auth');
 const syncModule = () => import('../cloud/sync');
@@ -11,12 +11,8 @@ interface CloudContext {
   /** Null when signed out, undefined until auth has reported in. */
   account: CloudAccount | null | undefined;
   state: SyncState;
-  /** Set when both this device and the cloud hold unsynced work. */
-  conflict: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
-  /** Resolve a conflict by choosing which side wins. */
-  resolve: (keep: 'local' | 'cloud') => Promise<void>;
   syncNow: () => Promise<void>;
   /** Disconnect this device from the account, leaving the cloud copy intact. */
   disconnect: () => Promise<void>;
@@ -29,19 +25,28 @@ const Ctx = createContext<CloudContext | null>(null);
 
 const IDLE: SyncState = { status: 'idle', lastSyncedAt: 0 };
 
+/** How close together two automatic sync passes may run. Returning to the app
+ * should refresh it, but tabbing away and back a few times shouldn't cost a
+ * round trip each time. Short enough that "open the app and it's current"
+ * still holds; long enough that flicking between tabs is free. */
+const RESUME_MIN_GAP_MS = 10_000;
+
 export function CloudSyncProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<CloudAccount | null | undefined>(
     cloudConfigured ? undefined : null
   );
   const [state, setState] = useState<SyncState>(IDLE);
-  const [conflict, setConflict] = useState(false);
-  // Guards against two syncs overlapping - a debounced upload firing while the
+  // Guards against two syncs overlapping - a debounced pass firing while the
   // sign-in sync is still running would race on the same documents.
   const running = useRef(false);
-  // Set while an account is being deleted. A debounced upload landing between
+  // Set while an account is being deleted. A debounced sync landing between
   // "delete the backup" and "delete the account" would quietly recreate the
   // data the user just asked us to destroy.
   const deleting = useRef(false);
+  // When the last pass finished, so returning to the app repeatedly doesn't
+  // fire one every time. Tabbing away and back is a normal thing to do; it
+  // shouldn't cost a round trip each time.
+  const lastPassAt = useRef(0);
 
   useEffect(() => {
     if (!cloudConfigured) return;
@@ -55,48 +60,33 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; stop?.(); };
   }, []);
 
-  /** One sync pass: work out which way data should move, then move it. */
-  const sync = useCallback(async (uid: string) => {
+  /** One sync pass. There is no direction to decide: every pass merges the
+   * cloud's newer rows in and sends this device's newer rows out, and the
+   * later stamp wins wherever the two hold the same row. */
+  const sync = useCallback(async (uid: string, opts: { force?: boolean } = {}) => {
     if (running.current || deleting.current) return;
+    // A pass that just ran has nothing new to say. Skipped only for the
+    // automatic triggers - an explicit "sync now" always goes through, because
+    // the user asking is itself the reason to check.
+    if (!opts.force && Date.now() - lastPassAt.current < RESUME_MIN_GAP_MS) return;
     running.current = true;
     setState({ status: 'syncing' });
     try {
       const [auto, cloud] = await Promise.all([autoModule(), syncModule()]);
-      const [hasData, remote] = await Promise.all([
-        auto.localHasData(),
-        cloud.fetchBackupMeta(uid),
-      ]);
-      const direction: SyncDirection = auto.decideDirection({
-        localHasData: hasData,
-        localDirty: auto.hasUnsyncedChanges(),
-        remote,
-        lastSyncedAt: auto.lastSyncedAt(),
-        syncedGeneration: auto.syncedGeneration(),
-      });
+      const startedAt = Date.now();
+      const result = await cloud.syncRecords(
+        uid, __APP_VERSION__, auto.pullCursor(), auto.pushWatermark()
+      );
+      auto.markPulled(result.cursor);
+      auto.markPushed(result.watermark);
+      auto.markSynced(startedAt);
+      setState({ status: 'idle', lastSyncedAt: startedAt });
 
-      if (direction === 'conflict') { setConflict(true); setState(IDLE); return; }
-      if (direction === 'push') {
-        // Stamped before the upload, so a set logged while it was in flight
-        // still counts as unsynced and gets picked up by the next pass.
-        const startedAt = Date.now();
-        const meta = await cloud.pushBackup(uid, __APP_VERSION__, { force: true });
-        auto.markSynced(startedAt);
-        auto.markGeneration(meta.updatedAt);
-        setState({ status: 'idle', lastSyncedAt: meta.updatedAt });
-        return;
-      }
-      if (direction === 'pull') {
-        await cloud.pullBackup(uid);
-        auto.markSynced();
-        // Remember which backup we now match, so the next pass doesn't read it
-        // as a stranger's and pull it again in a loop.
-        if (remote) auto.markGeneration(remote.updatedAt);
-        // Restored rows replace what the running app already read into memory,
-        // so the screens have to be rebuilt from the new database.
-        window.location.reload();
-        return;
-      }
-      setState({ status: 'idle', lastSyncedAt: auto.lastSyncedAt() });
+      // Merged rows replace what the running app already read into memory, so
+      // the screens have to be rebuilt from the new database. Only when the
+      // merge actually changed something: reloading on every pass would throw
+      // the user out of a session they're part-way through.
+      if (result.changed) window.location.reload();
     } catch (e) {
       setState(
         typeof navigator !== 'undefined' && !navigator.onLine
@@ -104,34 +94,56 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
           : { status: 'error', message: (e as Error).message }
       );
     } finally {
+      lastPassAt.current = Date.now();
       running.current = false;
     }
   }, []);
 
-  // Sync on sign-in, and whenever the account changes.
+  // Sync on sign-in, and whenever the account changes. Forced: signing in is
+  // the moment a device most needs to be current, and it must not be skipped
+  // because some other trigger happened to fire a moment earlier.
   useEffect(() => {
     if (!account) return;
-    void sync(account.uid);
+    void sync(account.uid, { force: true });
   }, [account, sync]);
 
-  // Sync after the user stops writing, and when the app is backgrounded - the
-  // last chance to save a session on mobile, where tabs are killed silently.
+  // Everything that should trigger a sync pass.
+  //
+  // The one worth calling out is coming *back* to the app. A tab or app left
+  // open for a week is still signed in and still showing what it read when it
+  // was opened - which may be days behind what the user has since done on
+  // their phone. Syncing only after they write would mean logging a set
+  // against stale state, and deleting one elsewhere would appear not to have
+  // worked. Refreshing on the way in is what makes "pick up any device" true
+  // rather than "true within six seconds of typing".
   useEffect(() => {
-    if (!account || conflict) return;
+    if (!account) return;
     let stopSchedule: (() => void) | undefined;
     void autoModule().then((auto) => {
       stopSchedule = auto.scheduleOnChange(() => void sync(account.uid));
     });
 
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') void sync(account.uid);
+    const onVisibility = () => {
+      // Going away is forced: on mobile this is the last code that runs before
+      // the tab is killed, so a throttle here could lose a whole session.
+      // Coming back is throttled, because flicking between tabs is normal and
+      // shouldn't cost a round trip each time.
+      const leaving = document.visibilityState === 'hidden';
+      void sync(account.uid, { force: leaving });
     };
-    document.addEventListener('visibilitychange', onHide);
+    // Reconnecting is the other moment a device is knowingly behind: whatever
+    // it failed to send while offline goes out, and whatever it missed
+    // arrives.
+    const onOnline = () => void sync(account.uid);
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online', onOnline);
     return () => {
       stopSchedule?.();
-      document.removeEventListener('visibilitychange', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', onOnline);
     };
-  }, [account, conflict, sync]);
+  }, [account, sync]);
 
   const signIn = useCallback(async () => {
     setState({ status: 'syncing' });
@@ -145,39 +157,14 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     const [auth, auto] = await Promise.all([authModule(), autoModule()]);
     await auth.signOut();
-    // The next account must not inherit this one's sync clock, or its first
-    // pass would misread whose data is newer.
+    // The next account must not inherit this one's read position, or its first
+    // pass would skip the history it's signing in to get.
     auto.resetChangeMarks();
-    setConflict(false);
     setState(IDLE);
   }, []);
 
-  const resolve = useCallback(async (keep: 'local' | 'cloud') => {
-    if (!account) return;
-    setConflict(false);
-    setState({ status: 'syncing' });
-    try {
-      const [auto, cloud] = await Promise.all([autoModule(), syncModule()]);
-      if (keep === 'local') {
-        const startedAt = Date.now();
-        const meta = await cloud.pushBackup(account.uid, __APP_VERSION__, { force: true });
-        auto.markSynced(startedAt);
-        auto.markGeneration(meta.updatedAt);
-        setState({ status: 'idle', lastSyncedAt: meta.updatedAt });
-      } else {
-        const remote = await cloud.fetchBackupMeta(account.uid);
-        await cloud.pullBackup(account.uid);
-        auto.markSynced();
-        if (remote) auto.markGeneration(remote.updatedAt);
-        window.location.reload();
-      }
-    } catch (e) {
-      setState({ status: 'error', message: (e as Error).message });
-    }
-  }, [account]);
-
   const syncNow = useCallback(async () => {
-    if (account) await sync(account.uid);
+    if (account) await sync(account.uid, { force: true });
   }, [account, sync]);
 
   /** Signs out and forgets the sync clock, but leaves the cloud copy alone -
@@ -186,7 +173,6 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
     const [auth, auto] = await Promise.all([authModule(), autoModule()]);
     await auth.signOut();
     auto.resetChangeMarks();
-    setConflict(false);
     setState(IDLE);
   }, []);
 
@@ -205,7 +191,6 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
       await cloud.deleteBackup(account.uid);
       await auth.deleteAccount();
       auto.resetChangeMarks();
-      setConflict(false);
       setState(IDLE);
     } finally {
       deleting.current = false;
@@ -214,7 +199,7 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      account, state, conflict, signIn, signOut, resolve, syncNow,
+      account, state, signIn, signOut, syncNow,
       disconnect, deleteAccount: deleteAccountFully,
     }}>
       {children}

@@ -13,9 +13,13 @@ service cloud.firestore {
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
 
-      // The backup's chunked tables live beneath the user document. The same
-      // ownership check applies at every depth, so a nested path can't be used
-      // to sidestep it.
+      // The synced records live beneath the user document, one per row, at
+      // users/{uid}/records/{table}~{id}. Reads are range queries over
+      // `updatedAt`, which Firestore serves from its automatic single-field
+      // index - no composite index has to be deployed for this to work.
+      //
+      // The same ownership check applies at every depth, so a nested path
+      // can't be used to sidestep it.
       match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }

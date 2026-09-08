@@ -115,8 +115,8 @@ export default function Sync() {
             </div>
             <div className="text-[13.5px] leading-[1.5] text-neutral-400">
               {account
-                ? 'Your reps back up on their own as you log them, and come back automatically when you sign in on a new device.'
-                : 'Sign in and your reps back up as you go. Sign in on a new phone and everything comes back — name, schedule and streak included.'}
+                ? 'Your reps sync on their own as you log them. Use Rungs on any device and they all stay in step — the most recent change always wins.'
+                : 'Sign in and your reps sync as you go. Use another phone and everything is already there — name, schedule and streak included.'}
             </div>
           </div>
 
@@ -223,9 +223,10 @@ export default function Sync() {
               </div>
 
               <div className="text-[11.5px] leading-[1.5] text-neutral-500">
-                Your backup is stored under your Google account and readable only
-                by you. Rungs still works entirely offline; syncing catches up
-                once you're back on a connection.
+                Your data is stored under your Google account and readable only
+                by you. Rungs still works entirely offline; anything you log
+                syncs up once you're back on a connection, and the most recent
+                version of each entry is the one that's kept.
               </div>
             </>
           )}
