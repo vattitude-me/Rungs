@@ -1,13 +1,31 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
+
+/**
+ * Width alone used to decide this, which broke the moment a phone was turned
+ * sideways: a Pixel 9 in landscape is ~923px wide, cleared the old 501px bar,
+ * and got the simulated phone frame - an 866px-tall mockup rendered into a
+ * ~411px-tall viewport, so only the top half of the app was on screen.
+ *
+ * A fine pointer is what actually separates a desktop browser from a touch
+ * device that merely got wide by being rotated, and the installed app is
+ * never a desktop browser whatever its dimensions.
+ */
+const DESKTOP_QUERY = '(min-width: 501px) and (pointer: fine)';
+
+function matchesDesktop(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (Capacitor.isNativePlatform()) return false;
+  return window.matchMedia(DESKTOP_QUERY).matches;
+}
 
 function useIsDesktop(): boolean {
-  const [isDesktop, setIsDesktop] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 501px)').matches
-  );
+  const [isDesktop, setIsDesktop] = useState(matchesDesktop);
 
   useEffect(() => {
-    const mql = window.matchMedia('(min-width: 501px)');
-    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    if (Capacitor.isNativePlatform()) return;
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    const handler = () => setIsDesktop(matchesDesktop());
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
   }, []);

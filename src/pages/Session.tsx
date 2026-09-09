@@ -275,7 +275,7 @@ export default function Session() {
           <Button variant="primary" block className="h-12 text-[15px]" onClick={() => navigate('/today')}>
             Back to today
           </Button>
-          <Button variant="secondary" block className="h-11" onClick={() => { setDone(null); engine.stop(); }}>
+          <Button variant="secondary" block className="h-11" onClick={() => { setDone(null); engine.reset(); }}>
             One more set
           </Button>
         </div>
