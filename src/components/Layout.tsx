@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
 
-/** The tabs either side of the log button. Two on the left, two on the right,
- * so the action button stays centred. */
+/** The tabs either side of the log button. The two sides don't have to match
+ * in count - each renders into its own equal-width column (see the nav
+ * layout below), so the button stays centred whether there are one or two
+ * tabs on a given side. */
 const LEFT_TABS = [
   { path: '/today', label: 'Home', Icon: Home },
   { path: '/progress', label: 'Progress', Icon: LineChart },
@@ -53,13 +55,25 @@ export default function Layout() {
         <Outlet />
       </main>
       <nav
-        className="absolute left-0 right-0 bottom-0 h-[84px] px-3.5 pb-5 flex items-center justify-between safe-bottom"
+        className="absolute left-0 right-0 bottom-0 h-[84px] px-3.5 pb-5 flex items-center safe-bottom"
         style={{
           background: 'linear-gradient(to top, rgba(22,24,38,.98) 55%, rgba(22,24,38,0))',
           backdropFilter: 'blur(8px)',
         }}
       >
-        {LEFT_TABS.map(tab)}
+        {/* Two equal-width columns, one tab per side, with the button pinned
+            dead centre between them. A single flat row of flex-1 tabs plus a
+            fixed-width button does NOT centre the button unless the tab count
+            either side matches - the previous version had two tabs on the
+            left and one on the right (a trailing spacer stood in as a fake
+            second "tab" to even the count, which instead gave the real right
+            tab two neighbouring gaps and crowded it off centre). Two
+            same-width columns make left/right symmetry the row's structure
+            rather than something that has to be re-balanced by hand each
+            time a tab is added. */}
+        <div className="flex-1 flex items-center justify-around">
+          {LEFT_TABS.map(tab)}
+        </div>
 
         <button
           onClick={() => navigate('/session/log')}
@@ -70,10 +84,9 @@ export default function Layout() {
           <Plus size={26} strokeWidth={2.5} color="#161826" />
         </button>
 
-        {RIGHT_TABS.map(tab)}
-        {/* Balances the two tabs on the left so the action button sits in the
-            middle rather than drifting right. */}
-        <span className="flex-1" aria-hidden />
+        <div className="flex-1 flex items-center justify-around">
+          {RIGHT_TABS.map(tab)}
+        </div>
       </nav>
     </div>
   );
