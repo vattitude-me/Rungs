@@ -11,8 +11,8 @@ import InstallCard from '../components/InstallCard';
 import { getProfile, getSettings, getSetLogs } from '../db';
 import { generateDayPlan, reflowMissedWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor } from '../engine/dates';
-import { shouldRebaseline } from '../engine/coach';
-import type { Exercise, Profile, DayPlan, DashboardVariant } from '../types';
+import { shouldRebaseline, summariseItems } from '../engine/coach';
+import type { Exercise, Profile, DayPlan, DashboardVariant, WindowItem } from '../types';
 import { EXERCISE_LABELS, EXERCISE_COLOR } from '../types';
 
 /** Rough seconds per rep, used only for the "about N min" estimate. */
@@ -20,6 +20,21 @@ const SECONDS_PER_REP = 4;
 
 function estimateMinutes(reps: number): number {
   return Math.max(1, Math.round((reps * SECONDS_PER_REP) / 60));
+}
+
+/** "24 push-ups (3 sets) + 12 pull-ups" - one entry per exercise.
+ *
+ * The plan stores each set as its own item, so rendering items directly
+ * repeated the exercise name once per set and made this card grow without
+ * saying anything new. Set count is only shown when there is more than one,
+ * since "(1 set)" is noise. */
+function summaryText(items: WindowItem[]): string {
+  return summariseItems(items)
+    .map(({ exercise, reps, sets }) => {
+      const label = EXERCISE_LABELS[exercise].toLowerCase();
+      return sets > 1 ? `${reps} ${label} (${sets} sets)` : `${reps} ${label}`;
+    })
+    .join(' + ');
 }
 
 function greeting(hour: number): string {
@@ -101,9 +116,7 @@ export default function Today() {
 
   const nextWindow = plan.windows.find((w) => w.status === 'pending' || w.status === 'reflowed');
   const nextReps = nextWindow?.items.reduce((a, it) => a + it.reps, 0) ?? 0;
-  const nextSummary = nextWindow?.items
-    .map((it) => `${it.reps} ${EXERCISE_LABELS[it.exercise].toLowerCase()}`)
-    .join(' + ') ?? '';
+  const nextSummary = nextWindow ? summaryText(nextWindow.items) : '';
 
   const sessionUrl = (w: typeof plan.windows[number]) =>
     `/session?windowId=${w.id}&items=${encodeURIComponent(JSON.stringify(w.items))}`;
@@ -118,7 +131,7 @@ export default function Today() {
       name: w.items.length > 1
         ? `${reps} reps`
         : w.items[0] ? EXERCISE_LABELS[w.items[0].exercise] : '',
-      sub: w.items.map((it) => `${it.reps} ${EXERCISE_LABELS[it.exercise].toLowerCase()}`).join(' + '),
+      sub: summaryText(w.items),
       actionable: state === 'now',
     };
   });

@@ -29,7 +29,7 @@ export default function Layout() {
       <button
         key={path}
         onClick={() => navigate(path)}
-        className="flex-1 flex flex-col items-center gap-[3px] cursor-pointer"
+        className="w-16 flex-none flex flex-col items-center gap-[3px] cursor-pointer"
         style={{ color: active ? '#d2cefd' : '#75798c' }}
       >
         <span className="relative">
@@ -61,17 +61,18 @@ export default function Layout() {
           backdropFilter: 'blur(8px)',
         }}
       >
-        {/* Two equal-width columns, one tab per side, with the button pinned
-            dead centre between them. A single flat row of flex-1 tabs plus a
-            fixed-width button does NOT centre the button unless the tab count
-            either side matches - the previous version had two tabs on the
-            left and one on the right (a trailing spacer stood in as a fake
-            second "tab" to even the count, which instead gave the real right
-            tab two neighbouring gaps and crowded it off centre). Two
-            same-width columns make left/right symmetry the row's structure
-            rather than something that has to be re-balanced by hand each
-            time a tab is added. */}
-        <div className="flex-1 flex items-center justify-around">
+        {/* Two equal-width columns flanking the button, with tabs of a fixed
+            width packed toward the outer edges.
+
+            Both halves of this matter. Equal columns alone put the button
+            dead centre but don't place the tabs: a `flex-1` tab expands to
+            fill its column, so two tabs on the left centre at the column's
+            quarter-points while a lone tab on the right centres at its
+            midpoint - which reads as the right tab drifting inward and the
+            spacing going lopsided. Fixed-width tabs anchored to the outer
+            edge give every tab the same slot whatever its side holds, so
+            adding a fourth tab stays symmetric without re-tuning anything. */}
+        <div className="flex-1 flex items-center justify-start gap-1">
           {LEFT_TABS.map(tab)}
         </div>
 
@@ -84,7 +85,7 @@ export default function Layout() {
           <Plus size={26} strokeWidth={2.5} color="#161826" />
         </button>
 
-        <div className="flex-1 flex items-center justify-around">
+        <div className="flex-1 flex items-center justify-end gap-1">
           {RIGHT_TABS.map(tab)}
         </div>
       </nav>

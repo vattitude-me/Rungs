@@ -434,3 +434,28 @@ export function updateStreak(streak: StreakData, today: string, creditedToday: b
     windowStartDate: resetGraceWindow ? today : windowStartDate,
   };
 }
+
+/** Collapses split sets back into one entry per exercise, for display.
+ *
+ * `splitIntoSets` is what the plan stores, so a window that is really "24
+ * push-ups" is held as three 8-rep items - correct for running a session, but
+ * listing it verbatim gives "8 push-ups + 8 push-ups + 8 push-ups", which grows
+ * the card without adding information. Summarising by exercise keeps the total
+ * honest and names the set count once.
+ *
+ * Order follows first appearance rather than a fixed exercise order, so the
+ * summary reads in the order the window will actually be performed.
+ */
+export function summariseItems(items: WindowItem[]): { exercise: Exercise; reps: number; sets: number }[] {
+  const out: { exercise: Exercise; reps: number; sets: number }[] = [];
+  for (const item of items) {
+    const existing = out.find((o) => o.exercise === item.exercise);
+    if (existing) {
+      existing.reps += item.reps;
+      existing.sets += 1;
+    } else {
+      out.push({ exercise: item.exercise, reps: item.reps, sets: 1 });
+    }
+  }
+  return out;
+}
