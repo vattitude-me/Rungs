@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CircleUser } from 'lucide-react';
 import ProgressRing from '../components/ProgressRing';
 import FillBar from '../components/FillBar';
 import LitCard from '../components/LitCard';
@@ -145,16 +144,10 @@ export default function Today() {
             Day {plan.dayIndex + 1} · tier {dailyGoal} · {totalDone} of {dailyGoal} reps{goalHit ? ' · goal hit' : ''}
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-none">
-          <CloudButton />
-          <button
-            onClick={() => navigate('/settings')}
-            aria-label="Settings"
-            className="w-9.5 h-9.5 flex-none rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer"
-          >
-            <CircleUser size={19} strokeWidth={1.8} />
-          </button>
-        </div>
+        {/* Only sync lives up here now, and only when it needs something -
+            the profile button moved into the nav, where it is reachable from
+            every tab instead of from Today alone. */}
+        <CloudButton />
       </div>
 
       <InstallCard />

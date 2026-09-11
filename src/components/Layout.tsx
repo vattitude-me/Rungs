@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Home, LineChart, Plus, Users } from 'lucide-react';
+import { CircleUser, Home, LineChart, Plus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
@@ -7,7 +7,12 @@ import { useCloudSync } from '../hooks/useCloudSync';
 /** The tabs either side of the log button. The two sides don't have to match
  * in count - each renders into its own equal-width column (see the nav
  * layout below), so the button stays centred whether there are one or two
- * tabs on a given side. */
+ * tabs on a given side.
+ *
+ * Profile points at /settings, which is the only settings route rendered
+ * inside this layout; its sub-pages (retest, privacy, sync) are deliberately
+ * full-screen with their own back button, so the tab lights on exact match
+ * rather than on the /settings prefix. */
 const LEFT_TABS = [
   { path: '/today', label: 'Home', Icon: Home },
   { path: '/progress', label: 'Progress', Icon: LineChart },
@@ -15,6 +20,7 @@ const LEFT_TABS = [
 
 const RIGHT_TABS = [
   { path: '/squad', label: 'Squad', Icon: Users },
+  { path: '/settings', label: 'Profile', Icon: CircleUser },
 ] as const;
 
 export default function Layout() {

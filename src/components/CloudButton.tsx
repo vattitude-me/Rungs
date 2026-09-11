@@ -3,18 +3,23 @@ import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
 
 /**
- * The account control in the Today header.
+ * The sync control in the Today header - shown only when sync needs the user.
  *
- * Signed out it's an invitation, but a small one - sync is worth offering and
+ * Signed out it's an invitation, but a small one: sync is worth offering and
  * not worth a banner across the top of the screen every day until it's
- * dismissed. Sitting beside the settings button it stays available forever
- * without ever being in the way, which is what a dismissable banner was
- * really trying to buy: a way to stop seeing it.
+ * dismissed.
  *
- * Signed in it becomes status plus a manual refresh. Syncing already happens
- * on open, on return, on reconnect and after each set; the tap is for the
- * moment the user has just changed something on another device and wants to
- * see it land now rather than trust that it will.
+ * Signed in and healthy it renders nothing. Syncing already happens on open,
+ * on return, on reconnect and after each set, so a permanent green tick was
+ * reporting the absence of news - it asked for a corner of the header every
+ * day to say the thing the user already assumes. Account details and a manual
+ * refresh live in Settings, one tap away via the Profile tab, for the rarer
+ * moment of wanting to watch a change land from another device.
+ *
+ * Offline and error are the exceptions and still show. Those are the states
+ * where the user's assumption ("my reps are saved") has quietly stopped being
+ * true, and staying silent about them is what makes the silence untrustworthy
+ * everywhere else.
  */
 export default function CloudButton() {
   const { account, state, signIn, syncNow } = useCloudSync();
@@ -35,6 +40,11 @@ export default function CloudButton() {
       </button>
     );
   }
+
+  // Healthy and idle is the one state with nothing to say. Syncing still shows
+  // so a sync the user triggered from Settings has visible progress rather than
+  // appearing to do nothing.
+  if (state.status === 'idle') return null;
 
   const busy = state.status === 'syncing';
   const Icon =
