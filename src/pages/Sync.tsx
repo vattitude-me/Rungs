@@ -21,12 +21,6 @@ function describeWhen(ms: number): string {
   return days === 1 ? 'yesterday' : `${days} days ago`;
 }
 
-function countReps(meta: BackupMeta): string {
-  const sets = meta.counts.setLogs ?? 0;
-  const days = meta.counts.dayRecords ?? 0;
-  return `${sets} set${sets === 1 ? '' : 's'} across ${days} day${days === 1 ? '' : 's'}`;
-}
-
 export default function Sync() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -152,14 +146,25 @@ export default function Sync() {
                   isFirst icon={<ShieldCheck size={14} />}
                   title={account.email ?? account.displayName ?? 'Signed in'}
                   subtitle={
-                    // An empty backup is worth saying plainly. "Last saved 1h
-                    // ago - 0 sets across 0 days" reads as though something is
-                    // safely stored when nothing is, which is the one thing a
-                    // backup screen must never imply.
-                    !meta ? 'Nothing backed up yet'
-                    : (meta.counts.setLogs ?? 0) === 0 && (meta.counts.dayRecords ?? 0) === 0
-                      ? 'Signed in · nothing to back up yet'
-                      : `Last saved ${describeWhen(meta.updatedAt)} · ${countReps(meta)}`
+                    // Order matters here, and the rule is: never claim the
+                    // account is empty on the strength of a number that
+                    // doesn't come from the account.
+                    //
+                    // `counts` is written by whichever device synced last,
+                    // from its own tables - so a phone that syncs while empty
+                    // stamps the account empty, and this line then tells
+                    // someone who has just signed in on a new phone that their
+                    // history is gone while every record is still there. The
+                    // server count is what settles it, and when it can't be
+                    // taken we say we don't know rather than guess the
+                    // frightening answer.
+                    meta?.cloudRecords === null ? "Signed in · couldn't check what's stored"
+                    : (meta?.cloudRecords ?? 0) > 0
+                      ? `${meta!.cloudRecords} record${meta!.cloudRecords === 1 ? '' : 's'} stored${
+                          meta!.updatedAt ? ` · last saved ${describeWhen(meta!.updatedAt)}` : ''
+                        }`
+                    : !meta ? 'Nothing backed up yet'
+                      : 'Signed in · nothing to back up yet' 
                   }
                 />
                 <ListRow
@@ -180,6 +185,19 @@ export default function Sync() {
                   which from the welcome splash leads back to onboarding - a
                   dead end for someone who just restored their history and
                   wants to start training. */}
+              {/* What the last pass actually read, so a sync that does nothing
+                  can be told apart from one that had nothing to do. */}
+              {(() => {
+                const r = syncReport();
+                if (!r) return null;
+                return (
+                  <div className="text-[10.5px] leading-[1.5] text-neutral-600 tabular-nums">
+                    last pass: pulled {r.pulled}, pushed {r.pushed}
+                    {r.switched ? ', account changed (cursor reset)' : `, cursor ${r.cursorBefore}`}
+                  </div>
+                );
+              })()}
+
               {/* Until a pass has settled there is no answer yet, and guessing
                   "new user" is the costly guess: it offers to build a plan
                   over an account that already has one. */}
@@ -197,6 +215,36 @@ export default function Sync() {
                     <ArrowRight size={16} />
                   </span>
                 </Button>
+              ) : hasProfile === false && (meta?.cloudRecords ?? 0) > 0 ? (
+                // The account has records and this device didn't get them.
+                // That is a restore that failed, and it must never be dressed
+                // up as a fresh start: offering "Set up my plan" here is how a
+                // user ends up onboarding over their own history and pushing
+                // the empty result back up. Retry is the only safe action, and
+                // the message has to say the data is still there, because the
+                // screen otherwise reads exactly like data loss.
+                <div className="flex flex-col gap-2.5">
+                  <div className="p-3.5 rounded-[13px] bg-accent-900 flex flex-col gap-1">
+                    <span className="text-[13px] font-medium text-accent-100">
+                      Your data is safe — this device hasn't loaded it yet
+                    </span>
+                    <span className="text-[11.5px] leading-[1.5] text-accent-200">
+                      The account has {meta!.cloudRecords} records stored. Nothing
+                      has been lost, and nothing here will overwrite them. Try
+                      syncing again; if it keeps failing, sign out and back in.
+                    </span>
+                  </div>
+                  <Button
+                    variant="primary" block className="h-12 text-[15px]"
+                    disabled={busy || state.status === 'syncing'}
+                    onClick={() => { setBusy(true); void syncNow().finally(() => setBusy(false)); }}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      {state.status === 'syncing' ? 'Loading…' : 'Load my data'}
+                      <ArrowRight size={16} />
+                    </span>
+                  </Button>
+                </div>
               ) : hasProfile === false ? (
                 <Button
                   variant="primary" block className="h-12 text-[15px]"

@@ -1,6 +1,6 @@
 import {
   doc, getDoc, getDocs, setDoc, deleteDoc, collection, query, where, orderBy,
-  limit as fsLimit, writeBatch, serverTimestamp,
+  limit as fsLimit, writeBatch, serverTimestamp, getCountFromServer,
 } from 'firebase/firestore';
 import { cloudDb } from './firebase';
 import { stripUndefined } from './serialize';
@@ -67,6 +67,9 @@ export interface BackupMeta {
   updatedAt: number;
   appVersion: string;
   counts: Record<string, number>;
+  /** Records the server counted in this account, or null if the count failed.
+   * Authoritative, unlike `counts`, which the last device wrote about itself. */
+  cloudRecords?: number | null;
   deviceId?: string;
   deviceLabel?: string;
 }
@@ -374,10 +377,38 @@ export async function syncRecords(
   // A row that just arrived from the cloud and wasn't touched since is already
   // up there; sending it back is a write that changes nothing.
   const merged = new Map(incoming.map((r) => [docIdFor(r.table, r.id), r.updatedAt]));
-  const toPush = outgoing.filter((r) => {
+  let toPush = outgoing.filter((r) => {
     const seen = merged.get(docIdFor(r.table, r.id));
     return seen === undefined || r.updatedAt > seen;
   });
+
+  // Refuse to write a freshly-onboarded device over an account it failed to
+  // read. If this pass merged nothing while the account holds records, the
+  // pull did not work - a stale cursor, a refused read, a dropped connection -
+  // and last-write-wins will happily let this device's brand-new profile and
+  // baselines beat the real ones, because they genuinely are newer. The user
+  // sees their history vanish, and no later sync brings it back.
+  //
+  // Withholding the push is always recoverable: the local rows keep their
+  // stamps and go up on the next pass that reads successfully. Allowing it is
+  // not. So when the two disagree, the copy nobody has read yet is the one to
+  // protect.
+  if (applied === 0 && toPush.length > 0) {
+    const cloudCount = await countCloudRecords(uid);
+    if (cloudCount !== null && cloudCount > 0) {
+      const localNew = toPush.filter((r) => !merged.has(docIdFor(r.table, r.id)));
+      // Every row is new to an account that already has data: this device has
+      // never seen it, so it is not a peer with newer work - it is an empty
+      // device about to become the account.
+      if (localNew.length === toPush.length) {
+        throw new Error(
+          `Sync stopped to protect your data: this account has ${cloudCount} records ` +
+          `that this device hasn't loaded yet. Nothing was overwritten. Try again, ` +
+          `or sign out and back in.`
+        );
+      }
+    }
+  }
 
   if (toPush.length > 0) await uploadRecords(uid, toPush);
 
@@ -419,19 +450,58 @@ async function writeMeta(uid: string, appVersion: string): Promise<void> {
   }
 }
 
+/** How many records the account actually holds, counted by the server.
+ *
+ * This exists because the summary document cannot answer the question. Its
+ * counts are written by whichever device synced last, from that device's own
+ * tables - so a phone that syncs while empty stamps the account as empty, and
+ * the next screen to read it tells the user their history is gone while every
+ * record still sits in the collection untouched. Saying that to someone who
+ * has just signed in on a new phone is the worst thing this screen can do.
+ *
+ * An aggregation query, so the cost is one read and nothing is downloaded.
+ * Returns null when the count can't be taken - which is different from zero
+ * and must stay different, since "I don't know" and "there is nothing" are the
+ * two answers most dangerous to confuse here.
+ */
+export async function countCloudRecords(uid: string): Promise<number | null> {
+  try {
+    const snap = await getCountFromServer(recordsRef(uid));
+    return snap.data().count;
+  } catch {
+    return null;
+  }
+}
+
 /** Reads the account's summary without downloading the data, so the UI can say
- * what's up there. */
+ * what's up there.
+ *
+ * `cloudRecords` is the authoritative half: counted on the server, from the
+ * records themselves. The `counts` map beside it is the last writing device's
+ * view and is kept only for the per-table detail, which no decision should
+ * rest on. */
 export async function fetchBackupMeta(uid: string): Promise<BackupMeta | null> {
-  const snap = await getDoc(userRoot(uid));
-  if (!snap.exists()) return null;
+  const [snap, cloudRecords] = await Promise.all([
+    getDoc(userRoot(uid)),
+    countCloudRecords(uid),
+  ]);
+
+  // A missing summary document no longer means an empty account: the records
+  // are the account, and the summary is a convenience written after them.
+  if (!snap.exists()) {
+    return cloudRecords && cloudRecords > 0
+      ? { updatedAt: 0, appVersion: '', counts: {}, cloudRecords }
+      : null;
+  }
+
   const data = snap.data();
-  if (!data?.counts) return null;
   return {
-    updatedAt: data.updatedAt ?? 0,
-    appVersion: data.appVersion ?? '',
-    counts: data.counts,
-    deviceId: data.deviceId,
-    deviceLabel: data.deviceLabel,
+    updatedAt: data?.updatedAt ?? 0,
+    appVersion: data?.appVersion ?? '',
+    counts: data?.counts ?? {},
+    deviceId: data?.deviceId,
+    deviceLabel: data?.deviceLabel,
+    cloudRecords,
   };
 }
 

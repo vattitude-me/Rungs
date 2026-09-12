@@ -38,6 +38,24 @@ export function sharedProfileError(): string | null {
   return lastPublishError;
 }
 
+/** What the last sync pass actually did. Diagnostic only; nothing reads it to
+ * make a decision. */
+export interface SyncReport {
+  uid: string;
+  /** Whether the cursor was reset because the account changed. */
+  switched: boolean;
+  cursorBefore: number;
+  pulled: number;
+  pushed: number;
+  at: number;
+}
+
+let lastSyncReport: SyncReport | null = null;
+
+export function syncReport(): SyncReport | null {
+  return lastSyncReport;
+}
+
 /** Publishes the handful of figures a friend is allowed to see.
  *
  * Everything here is recomputed from the local tables rather than passed in,
@@ -143,12 +161,22 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
       // account's position. Every one of its records is older than that, so
       // the pull matches nothing, the pass reports a clean empty sync, and the
       // device uploads its own state over a history it never read.
-      auto.adoptAccount(uid);
+      const switched = auto.adoptAccount(uid);
 
       const startedAt = Date.now();
+      const cursorBefore = auto.pullCursor();
       const result = await cloud.syncRecords(
-        uid, __APP_VERSION__, auto.pullCursor(), auto.pushWatermark()
+        uid, __APP_VERSION__, cursorBefore, auto.pushWatermark()
       );
+      // Kept deliberately, not left over from debugging. A sync that silently
+      // does nothing is the one failure this code cannot explain after the
+      // fact - the counts it writes describe the device, so an empty device
+      // and a refused read look identical afterwards. One line per pass is a
+      // cost worth paying to be able to answer "what did it actually read".
+      lastSyncReport = {
+        uid, switched, cursorBefore,
+        pulled: result.pulled, pushed: result.pushed, at: startedAt,
+      };
       auto.markPulled(result.cursor);
       auto.markPushed(result.watermark);
       auto.markSynced(startedAt);
