@@ -5,7 +5,7 @@ import {
 import Button from '../components/Button';
 import Tag from '../components/Tag';
 import { getProfile } from '../db';
-import { useCloudSync } from '../hooks/useCloudSync';
+import { useCloudSync, sharedProfileError } from '../hooks/useCloudSync';
 import { useFriends } from '../hooks/useFriends';
 import type { Friend, NudgePhraseId } from '../cloud/friends';
 import { cloudConfigured } from '../cloud/config';
@@ -41,6 +41,40 @@ function localDay(): string {
 /** The invite link a friend can open directly. Deep-links to Squad with the
  * code prefilled, so someone who doesn't have Rungs installs it, signs in, and
  * lands on the request already typed. */
+/** Clipboard write that reports whether it actually worked.
+ *
+ * navigator.clipboard is unavailable or rejects in several places this app
+ * runs - a Capacitor WebView without the permission, and any non-secure
+ * origin. The old code swallowed that rejection and showed a tick regardless,
+ * which is worse than not offering copy at all: the user walks away believing
+ * they have the code. The execCommand path is deprecated but still the only
+ * fallback those contexts have.
+ */
+async function writeClipboard(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fall through to the legacy path rather than giving up.
+  }
+  try {
+    const el = document.createElement('textarea');
+    el.value = value;
+    el.setAttribute('readonly', '');
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(el);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function inviteLink(code: string): string {
   return `${window.location.origin}/squad?add=${code}`;
 }
@@ -69,6 +103,7 @@ export default function Squad() {
   const [busy, setBusy] = useState(false);
 
   const friends = useFriends(name);
+  const codeError = friends.me?.code ? null : (friends.error ?? sharedProfileError());
 
   // Whether the OS offers a share sheet. Read once into a boolean rather than
   // tested inline: `navigator.share` is a function reference, so a bare
@@ -118,7 +153,18 @@ export default function Squad() {
       }).catch(() => {});
       return;
     }
-    await navigator.clipboard.writeText(link).catch(() => {});
+    await copyText(link);
+  };
+
+  /** Copies the bare code, for the case the share sheet isn't what's wanted. */
+  const copyCode = async (value: string) => {
+    await copyText(value);
+  };
+
+  const copyText = async (value: string) => {
+    const ok = await writeClipboard(value);
+    setNotice(ok ? null : { ok: false, text: 'Couldn\'t copy - select the code and copy it by hand.' });
+    if (!ok) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -251,8 +297,19 @@ export default function Squad() {
         <div className="flex flex-col gap-1.5">
           <div className="text-[12.5px] text-neutral-400">Your invite code</div>
           <div className="flex items-center gap-2">
-            <span className="flex-1 text-[19px] font-medium tracking-[0.14em] tabular-nums">
-              {friends.me?.code ?? '••••••'}
+            {/* Selectable, and tappable to copy. In the Android build there is
+                no URL bar and no "view source" to fall back on, so a code the
+                OS won't let you select is a code you can only transcribe by
+                eye - and select-none is the app-wide default for a UI that
+                should otherwise feel native. */}
+            <span
+              onClick={() => { if (friends.me?.code) void copyCode(friends.me.code); }}
+              className={`flex-1 text-[19px] font-medium tracking-[0.14em] tabular-nums select-text ${
+                friends.me?.code ? 'cursor-pointer' : 'text-neutral-600'
+              }`}
+              style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
+            >
+              {friends.me?.code ?? (codeError ? 'Unavailable' : 'Loading…')}
             </span>
             <button
               onClick={() => void share()}
@@ -263,10 +320,16 @@ export default function Squad() {
               {copied ? <Check size={17} /> : canShare ? <Share2 size={17} /> : <Copy size={17} />}
             </button>
           </div>
-          <div className="text-[11.5px] leading-[1.5] text-neutral-500">
-            Share this with someone you train with. It's the only way to be added —
-            nobody can find you by name or email.
-          </div>
+          {codeError ? (
+            <div className="text-[11.5px] leading-[1.5] text-danger">
+              Couldn't create your invite code: {codeError}
+            </div>
+          ) : (
+            <div className="text-[11.5px] leading-[1.5] text-neutral-500">
+              Tap the code to copy it. It's the only way to be added — nobody
+              can find you by name or email.
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 border-t border-text/10 pt-3.5">

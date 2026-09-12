@@ -13,6 +13,21 @@ import type { Friend, InboxItem, PublicProfile, NudgePhraseId } from '../cloud/f
 
 const friendsModule = () => import('../cloud/friends');
 
+/** Creates the shareable profile, and so the invite code, on first need.
+ *
+ * The figures are deliberately zeroed rather than recomputed from the local
+ * tables: the sync pass owns that calculation and will overwrite these within
+ * the same session. What matters here is that the code exists, since it is the
+ * only thing a user cannot obtain any other way.
+ */
+async function ensureProfile(
+  uid: string,
+  myName: string,
+  m: Awaited<ReturnType<typeof friendsModule>>,
+) {
+  return m.publishProfile(uid, myName, 0, 0, m.localDay());
+}
+
 export interface FriendsState {
   /** Undefined until the first load finishes, so the UI can tell "loading"
    * from "no friends yet" - they want very different screens. */
@@ -49,15 +64,30 @@ export function useFriends(myName: string): FriendsState {
       const m = await friendsModule();
       const [list, mine] = await Promise.all([m.listFriends(uid), m.myProfile(uid)]);
       setFriends(list);
-      setMe(mine);
       setError(null);
+
+      // A profile is normally published by the sync pass, but Squad is
+      // reachable before one has run. myProfile only reads, so until that pass
+      // happens there is no invite code, and the UI can only show a row of
+      // dots the user cannot copy or act on.
+      //
+      // Only when the name has loaded, though: Squad reads it from the local
+      // profile asynchronously, so publishing on the first pass would claim
+      // the code under the "Rungs user" fallback and leave a friend looking at
+      // a request from nobody. A missing name means "not ready yet", not
+      // "unnamed" - the sync pass remains the backstop either way.
+      if (mine) {
+        setMe(mine);
+      } else if (myName) {
+        setMe(await ensureProfile(uid, myName, m));
+      }
     } catch (e) {
       // An empty list would read as "you have no friends", which is a
       // different and wrong statement when the truth is that the read failed.
       setFriends([]);
       setError((e as Error).message);
     }
-  }, [uid]);
+  }, [uid, myName]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 

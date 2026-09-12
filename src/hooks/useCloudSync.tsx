@@ -25,15 +25,30 @@ const Ctx = createContext<CloudContext | null>(null);
 
 const IDLE: SyncState = { status: 'idle', lastSyncedAt: 0 };
 
+/** Why the last profile publish failed, or null if it worked.
+ *
+ * Module-level rather than React state because the publish runs inside the
+ * sync pass, which is deliberately outside the component tree. Squad reads it
+ * when its own profile load comes back empty, to tell "not published yet"
+ * from "published fine, still loading".
+ */
+let lastPublishError: string | null = null;
+
+export function sharedProfileError(): string | null {
+  return lastPublishError;
+}
+
 /** Publishes the handful of figures a friend is allowed to see.
  *
  * Everything here is recomputed from the local tables rather than passed in,
  * so the number a friend sees is the same one the user's own Today screen
  * draws - percent of the day's tier, from the same set logs.
  *
- * Silent on failure by design. This is a courtesy write for a side tab; the
- * backup has already succeeded by the time it runs, and reporting an error
- * from it would tell the user their data didn't save when it did.
+ * Never throws, because this is a courtesy write for a side tab and the backup
+ * has already succeeded by the time it runs - failing it must not report that
+ * the user's data didn't save. But it no longer fails *silently*: without the
+ * profile there is no invite code, and Squad showed that as a permanent row of
+ * dots with nothing to act on.
  */
 async function publishSharedProfile(uid: string): Promise<void> {
   try {
@@ -56,10 +71,17 @@ async function publishSharedProfile(uid: string): Promise<void> {
     const percent = goal > 0 ? (100 * done) / goal : 0;
 
     await friends.publishProfile(uid, profile.name, percent, streak.current, today);
-  } catch {
-    // Not signed up for friends, offline, or rules not yet deployed.
+  } catch (e) {
+    // Non-fatal for sync itself - a workout backs up fine whether or not the
+    // shareable profile went out. But swallowing it entirely is what made a
+    // missing invite code look like a permanent row of dots in Squad with
+    // nothing to act on, so the reason is kept for Squad to surface.
+    lastPublishError = (e as Error).message;
+    return;
   }
+  lastPublishError = null;
 }
+
 
 /** How close together two automatic sync passes may run. Returning to the app
  * should refresh it, but tabbing away and back a few times shouldn't cost a
