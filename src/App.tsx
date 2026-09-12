@@ -24,12 +24,44 @@ import Settings from './pages/Settings';
 import DataPrivacy from './pages/DataPrivacy';
 import Retest from './pages/Retest';
 import Sync from './pages/Sync';
-import { CloudSyncProvider } from './hooks/useCloudSync';
+import { CloudSyncProvider, useCloudSync } from './hooks/useCloudSync';
 
 /** Hooks that need the cloud context, so they sit inside the provider rather
  * than beside it. */
 function CloudSideEffects() {
   useNudgeNotifications();
+  return null;
+}
+
+/** Re-reads the local profile whenever the signed-in account changes.
+ *
+ * Signing in on a fresh install is the case that needs this. The first sync
+ * pass merges the account's profile into Dexie, but App read that table once
+ * on mount and had already decided there was no profile - so the restore
+ * landed and the app kept showing onboarding on top of it. A reload was what
+ * papered over this, and it was conditional on the merge reporting a change
+ * *and* on window.location.reload() being reliable, which inside a Capacitor
+ * WebView it is not.
+ *
+ * Reacting to the account is both narrower and more dependable: the profile is
+ * re-read exactly when the thing that could have replaced it happens.
+ */
+function ProfileWatcher({ onChange }: { onChange: (p: Profile | null) => void }) {
+  const { account, state } = useCloudSync();
+  const uid = account?.uid;
+  const status = state.status;
+
+  useEffect(() => {
+    if (!uid) return;
+    // After a pass settles, not while it runs: mid-pass the merge may only be
+    // part-applied, and reading then can see a profile without the plan rows
+    // that belong with it.
+    if (status === 'syncing') return;
+    let cancelled = false;
+    void getProfile().then((p) => { if (!cancelled) onChange(p ?? null); });
+    return () => { cancelled = true; };
+  }, [uid, status, onChange]);
+
   return null;
 }
 
@@ -83,6 +115,7 @@ export default function App() {
   return (
     <CloudSyncProvider>
       <CloudSideEffects />
+      <ProfileWatcher onChange={setProfile} />
       <PhoneFrame>
         <Routes>
           <Route path="/onboarding/welcome" element={<Welcome />} />

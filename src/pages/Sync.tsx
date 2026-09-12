@@ -44,7 +44,13 @@ export default function Sync() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
+  // Re-read after each pass settles, not during one. A restore writes the
+  // profile part-way through the pass, so a read taken while syncing can
+  // legitimately find nothing and then never look again - which is what put
+  // "Set up my plan" in front of someone who had just restored an account that
+  // already had one.
   useEffect(() => {
+    if (state.status === 'syncing') return;
     let cancelled = false;
     getProfile().then((p) => {
       if (!cancelled) setHasProfile(Boolean(p?.onboardingComplete));
@@ -174,7 +180,14 @@ export default function Sync() {
                   which from the welcome splash leads back to onboarding - a
                   dead end for someone who just restored their history and
                   wants to start training. */}
-              {hasProfile === true ? (
+              {/* Until a pass has settled there is no answer yet, and guessing
+                  "new user" is the costly guess: it offers to build a plan
+                  over an account that already has one. */}
+              {state.status === 'syncing' ? (
+                <div className="text-[12.5px] text-neutral-400 text-center py-3">
+                  Checking your account…
+                </div>
+              ) : hasProfile === true ? (
                 <Button
                   variant="primary" block className="h-12 text-[15px]"
                   onClick={() => navigate('/today', { replace: true })}

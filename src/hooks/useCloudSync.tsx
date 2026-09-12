@@ -105,6 +105,10 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
   // fire one every time. Tabbing away and back is a normal thing to do; it
   // shouldn't cost a round trip each time.
   const lastPassAt = useRef(0);
+  // Whether the next pass is the first for this account. The sign-in pass
+  // restores rather than updates, and is handled by re-reading instead of by
+  // reloading - see the reload below.
+  const firstPassForAccount = useRef(true);
 
   useEffect(() => {
     if (!cloudConfigured) return;
@@ -150,7 +154,16 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
       // the screens have to be rebuilt from the new database. Only when the
       // merge actually changed something: reloading on every pass would throw
       // the user out of a session they're part-way through.
-      if (result.changed) window.location.reload();
+      //
+      // Not on the pass that follows sign-in, though. A fresh install signing
+      // in to an existing account merges its whole history here, and reloading
+      // on that is both the slowest possible way to show it and, in a
+      // Capacitor WebView, not reliably a reload at all - which is what left
+      // the app sitting on onboarding with the restored profile already in the
+      // database underneath it. ProfileWatcher re-reads on the account
+      // changing, so that case is already covered without a reload.
+      if (result.changed && !firstPassForAccount.current) window.location.reload();
+      firstPassForAccount.current = false;
     } catch (e) {
       setState(
         typeof navigator !== 'undefined' && !navigator.onLine
@@ -168,6 +181,7 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
   // because some other trigger happened to fire a moment earlier.
   useEffect(() => {
     if (!account) return;
+    firstPassForAccount.current = true;
     void sync(account.uid, { force: true });
   }, [account, sync]);
 
