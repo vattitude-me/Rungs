@@ -1,6 +1,6 @@
 import {
   lastSyncedAt, markPulled, markPushed, markSynced, onLocalChange,
-  pullCursor, pushWatermark, resetChangeMarks,
+  pullCursor, pushWatermark, resetChangeMarks, adoptAccount,
 } from '../db/changes';
 
 /** How long the app waits after the last local write before syncing. Long
@@ -32,4 +32,5 @@ export function scheduleOnChange(fn: () => void): () => void {
 export {
   lastSyncedAt, markPulled, markPushed, markSynced, pullCursor, pushWatermark,
   resetChangeMarks,
+  adoptAccount,
 };

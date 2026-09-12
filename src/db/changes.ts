@@ -23,6 +23,20 @@ const PUSH_WATERMARK = 'rungs.pushWatermark';
  * is display only; no merge decision reads it. */
 const SYNCED_AT = 'rungs.syncedAt';
 
+/** Which account the positions above belong to.
+ *
+ * Without this the cursor is a number with no owner, and signing from one
+ * account straight into another silently hands the second the first's read
+ * position. The second account's records are all older than that cursor, so
+ * the pull matches nothing, reports a clean empty sync, and the device then
+ * uploads its own state over an account whose history it never read.
+ *
+ * Signing out cleared the cursor and hid this, so it only happened when
+ * switching accounts directly - which is exactly what "Already have an
+ * account?" on a device that has been signed in before does.
+ */
+const CURSOR_OWNER = 'rungs.cursorOwner';
+
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
@@ -49,6 +63,32 @@ function write(key: string, value: number): void {
  * set. */
 export function markChanged(): void {
   for (const fn of listeners) fn();
+}
+
+/** Points the sync bookkeeping at `uid`, clearing it if it belonged to someone
+ * else. Call before the first pass for an account; it is a no-op once the
+ * stored owner already matches, so every later pass keeps its position.
+ *
+ * Returns true when the positions were cleared, so a caller can tell a resumed
+ * sync from one that is about to read an account from the beginning. */
+export function adoptAccount(uid: string): boolean {
+  let owner: string | null = null;
+  try {
+    owner = localStorage.getItem(CURSOR_OWNER);
+  } catch {
+    // Unreadable storage means no trustworthy owner, so treat it as a change
+    // and read from the beginning - the safe direction to be wrong in.
+  }
+  if (owner === uid) return false;
+
+  resetChangeMarks();
+  try {
+    localStorage.setItem(CURSOR_OWNER, uid);
+  } catch {
+    // A device that can't remember the owner re-reads each session. Slower,
+    // still correct: merging is idempotent.
+  }
+  return true;
 }
 
 export function pullCursor(): number {
@@ -92,6 +132,7 @@ export function resetChangeMarks(): void {
     localStorage.removeItem(PULL_CURSOR);
     localStorage.removeItem(PUSH_WATERMARK);
     localStorage.removeItem(SYNCED_AT);
+    localStorage.removeItem(CURSOR_OWNER);
   } catch {
     // Nothing to do; the cursor is an optimisation, not a correctness input.
   }

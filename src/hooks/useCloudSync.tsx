@@ -135,6 +135,16 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
     setState({ status: 'syncing' });
     try {
       const [auto, cloud] = await Promise.all([autoModule(), syncModule()]);
+
+      // Before reading the cursor, not after: the stored position belongs to
+      // whichever account was last synced on this device, and signing straight
+      // from one account into another (without the sign-out that used to clear
+      // it) would otherwise ask the new account for records newer than the old
+      // account's position. Every one of its records is older than that, so
+      // the pull matches nothing, the pass reports a clean empty sync, and the
+      // device uploads its own state over a history it never read.
+      auto.adoptAccount(uid);
+
       const startedAt = Date.now();
       const result = await cloud.syncRecords(
         uid, __APP_VERSION__, auto.pullCursor(), auto.pushWatermark()
