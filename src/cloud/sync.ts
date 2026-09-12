@@ -410,6 +410,53 @@ export async function syncRecords(
     }
   }
 
+  // Per record, for the ones that say who the user is.
+  //
+  // The check above only catches a device that is wholly empty. A device that
+  // merged even one row, or that holds one stale row of its own, walks past it
+  // and can still put a blank profile over a real one - and because the blank
+  // was written seconds ago it is genuinely newer, so last-write-wins accepts
+  // it. Stamps cannot tell "the user re-onboarded by accident" from "the user
+  // legitimately edited their name"; only the content can.
+  //
+  // So: if the server's copy looks like a real record and the copy about to
+  // replace it does not, the write is refused. Going the other way is always
+  // allowed, and so is replacing one real record with another - this blocks
+  // the hollowing-out, not editing.
+  const identity = toPush.filter((r) => IDENTITY_TABLES.includes(r.table) && !r.deletedAt);
+  if (identity.length > 0) {
+    const server = await fetchServerRecords(uid, identity);
+    const hollowed = identity.filter((r) => {
+      const theirs = server.get(docIdFor(r.table, r.id));
+      if (!theirs) return false;
+      return looksSubstantive(r.table, theirs.row) && !looksSubstantive(r.table, r.row);
+    });
+
+    if (hollowed.length > 0) {
+      const names = [...new Set(hollowed.map((r) => r.table))].join(', ');
+      throw new Error(
+        `Sync stopped to protect your data: this device was about to replace your ` +
+        `stored ${names} with an empty copy. Nothing was overwritten. Try again, ` +
+        `or sign out and back in.`
+      );
+    }
+
+    // A real record on this device that is *older* than the server's is not a
+    // threat - the merge would have kept the server's anyway - but sending it
+    // wastes a write and muddies the watermark. Dropped rather than refused.
+    const stale = new Set(
+      identity
+        .filter((r) => {
+          const theirs = server.get(docIdFor(r.table, r.id));
+          return theirs !== undefined && theirs.updatedAt > r.updatedAt;
+        })
+        .map((r) => docIdFor(r.table, r.id))
+    );
+    if (stale.size > 0) {
+      toPush = toPush.filter((r) => !stale.has(docIdFor(r.table, r.id)));
+    }
+  }
+
   if (toPush.length > 0) await uploadRecords(uid, toPush);
 
   // The watermark moves past everything just uploaded, so a quiet sync that
@@ -448,6 +495,64 @@ async function writeMeta(uid: string, appVersion: string): Promise<void> {
   } catch {
     // The data is already synced; a missing status line is cosmetic.
   }
+}
+
+/** The records that carry who the user is, rather than what they did on a
+ * given day.
+ *
+ * These are the ones worth a round trip to protect. A set log is one entry
+ * among hundreds and losing it costs a row; the profile is the name, the tier
+ * and the schedule, and the baselines are the numbers every future session is
+ * sized from. Onboarding rewrites exactly these, which is what makes an
+ * accidental re-onboarding destructive rather than merely untidy.
+ */
+const IDENTITY_TABLES: SyncedTable[] = ['profile', 'baselineLogs', 'settings'];
+
+/** Whether `row` looks like a real record rather than a placeholder.
+ *
+ * Deliberately shallow. The question is not "is this good data" - that is the
+ * app's job - but "did something write an empty shell over a real record",
+ * which is what a fresh onboarding pass looks like from here.
+ */
+function looksSubstantive(table: SyncedTable, row: Record<string, unknown>): boolean {
+  if (table === 'profile') {
+    return Boolean(row.onboardingComplete) && typeof row.name === 'string' && row.name.length > 0;
+  }
+  if (table === 'baselineLogs') {
+    return typeof row.maxReps === 'number' && row.maxReps > 0;
+  }
+  return true;
+}
+
+/** Reads the server's copy of the identity records this push would replace.
+ *
+ * One `getDoc` per record, and there are only ever a handful of them, so this
+ * costs a few reads on the passes that touch identity and nothing at all on
+ * the ones that don't.
+ */
+async function fetchServerRecords(
+  uid: string,
+  records: SyncRecord[]
+): Promise<Map<string, { updatedAt: number; row: Record<string, unknown> }>> {
+  const out = new Map<string, { updatedAt: number; row: Record<string, unknown> }>();
+  await Promise.all(records.map(async (r) => {
+    const key = docIdFor(r.table, r.id);
+    try {
+      const snap = await getDoc(doc(recordsRef(uid), key));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.deletedAt) return;
+      out.set(key, {
+        updatedAt: Number(data.updatedAt) || 0,
+        row: (data.row ?? {}) as Record<string, unknown>,
+      });
+    } catch {
+      // A read that fails tells us nothing, and nothing is not evidence that
+      // the server copy is absent. Left out of the map, which the caller
+      // treats as "no reason to block".
+    }
+  }));
+  return out;
 }
 
 /** How many records the account actually holds, counted by the server.
