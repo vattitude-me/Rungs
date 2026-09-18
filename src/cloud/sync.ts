@@ -1,6 +1,6 @@
 import {
   doc, getDoc, getDocs, setDoc, deleteDoc, collection, query, where, orderBy,
-  limit as fsLimit, writeBatch, serverTimestamp, getCountFromServer,
+  limit as fsLimit, writeBatch, serverTimestamp, getCountFromServer, Timestamp,
 } from 'firebase/firestore';
 import { cloudDb } from './firebase';
 import { stripUndefined } from './serialize';
@@ -225,9 +225,12 @@ async function fetchChangedRecords(uid: string, since: number): Promise<PulledPa
   let cursor = since;
 
   for (;;) {
+    // `seq` is stored as a Firestore Timestamp, and an inequality filter only
+    // matches documents whose field is the same type as the query value - a
+    // plain number here would match nothing, ever, no matter the cursor.
     const page = await getDocs(query(
       recordsRef(uid),
-      where('seq', '>', cursor),
+      where('seq', '>', Timestamp.fromMillis(cursor)),
       orderBy('seq'),
       fsLimit(PAGE_SIZE)
     ));
