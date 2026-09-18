@@ -5,7 +5,7 @@ import Button from '../components/Button';
 import ListRow from '../components/ListRow';
 import { getProfile } from '../db';
 import { cloudConfigured } from '../cloud/config';
-import { useCloudSync } from '../hooks/useCloudSync';
+import { useCloudSync, syncReport } from '../hooks/useCloudSync';
 import type { BackupMeta } from '../cloud/sync';
 
 const syncModule = () => import('../cloud/sync');
@@ -236,11 +236,11 @@ export default function Sync() {
                   </div>
                   <Button
                     variant="primary" block className="h-12 text-[15px]"
-                    disabled={busy || state.status === 'syncing'}
+                    disabled={busy}
                     onClick={() => { setBusy(true); void syncNow().finally(() => setBusy(false)); }}
                   >
                     <span className="inline-flex items-center gap-2">
-                      {state.status === 'syncing' ? 'Loading…' : 'Load my data'}
+                      {busy ? 'Loading…' : 'Load my data'}
                       <ArrowRight size={16} />
                     </span>
                   </Button>
