@@ -2,7 +2,9 @@ import { useEffect } from 'react';
 import { getProfile, getSettings } from '../db';
 import { generateDayPlan } from '../engine/planGenerator';
 import { localDate, dayIndexFor, timeToMinutes, nowMinutes } from '../engine/dates';
-import { isNative, scheduleWindowReminders, hasNotificationPermission } from '../engine/notifications';
+import {
+  isNative, scheduleWindowReminders, hasNotificationPermission, requestNotificationPermission,
+} from '../engine/notifications';
 import { EXERCISE_LABELS } from '../types';
 
 const CHECK_INTERVAL_MS = 30_000;
@@ -14,6 +16,13 @@ const LEAD_MINUTES = 5;
  * On Android these are scheduled with the OS, so they fire whether or not the
  * app is running. On the web there's no such thing without a push server, so
  * we fall back to polling and firing a Notification while the tab is open.
+ *
+ * Also the one place that asks the OS for permission on a device that never
+ * went through onboarding's toggle - a cloud restore pulls `reminders: true`
+ * from the account that turned it on, but that preference travelled with the
+ * profile while the OS permission did not, so a new device would otherwise
+ * carry a setting it can never act on until the user finds the toggle in
+ * Settings and taps it themselves.
  */
 export function useReminders() {
   useEffect(() => {
@@ -22,7 +31,10 @@ export function useReminders() {
     const check = async () => {
       const settings = await getSettings();
       if (!settings.reminders) return;
-      if (!(await hasNotificationPermission())) return;
+      if (!(await hasNotificationPermission())) {
+        if (!isNative()) return;
+        if (!(await requestNotificationPermission())) return;
+      }
 
       const profile = await getProfile();
       if (!profile) return;
