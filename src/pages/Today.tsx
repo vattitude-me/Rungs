@@ -113,7 +113,13 @@ export default function Today() {
     localDate(new Date(profile.createdAt))
   );
 
-  const nextWindow = plan.windows.find((w) => w.status === 'pending' || w.status === 'reflowed');
+  const openWindow = plan.windows.find((w) => w.status === 'pending' || w.status === 'reflowed');
+  // A window going stale used to end the day's options: once every window had
+  // been marked missed there was nothing left to start, even with most of the
+  // tier still unbanked. The earliest unfinished window stands in instead, so
+  // there is always something to tap while reps are owed.
+  const nextWindow = openWindow ?? plan.windows.find((w) => w.status !== 'done');
+  const nextIsMissed = Boolean(nextWindow && nextWindow.status === 'missed');
   const nextReps = nextWindow?.items.reduce((a, it) => a + it.reps, 0) ?? 0;
   const nextSummary = nextWindow ? summaryText(nextWindow.items) : '';
 
@@ -121,7 +127,11 @@ export default function Today() {
     `/session?windowId=${w.id}&items=${encodeURIComponent(JSON.stringify(w.items))}`;
 
   const windowRows = plan.windows.map((w, i) => {
-    const state: TimelineDotState = w.status === 'done' ? 'done' : (w === nextWindow ? 'now' : 'later');
+    const state: TimelineDotState =
+      w.status === 'done' ? 'done'
+        : w === nextWindow ? 'now'
+          : w.status === 'missed' ? 'missed'
+            : 'later';
     const reps = w.items.reduce((a, it) => a + it.reps, 0);
     return {
       id: w.id + i, time: w.at, state, window: w,
@@ -131,7 +141,10 @@ export default function Today() {
         ? `${reps} reps`
         : w.items[0] ? EXERCISE_LABELS[w.items[0].exercise] : '',
       sub: summaryText(w.items),
-      actionable: state === 'now',
+      // Every window you haven't finished is yours to start, in any order.
+      // Only one used to be, so a window that had gone by - or one later in
+      // the day you happened to have time for - simply could not be opened.
+      actionable: w.status !== 'done',
     };
   });
 
@@ -210,8 +223,12 @@ export default function Today() {
       )}
 
       <LitCard className="flex flex-col gap-2.75 p-4">
-        <div className="text-[10px] tracking-[0.12em] text-accent">
-          {nextWindow ? `UP NEXT · ${nextWindow.at}` : goalHit ? 'ALL WINDOWS DONE' : 'DAY WRAPPED'}
+        <div className="text-[10px] tracking-[0.12em]" style={{ color: nextIsMissed ? '#f2c14e' : undefined }}>
+          <span className={nextIsMissed ? '' : 'text-accent'}>
+            {nextWindow
+              ? `${nextIsMissed ? 'PICK UP' : 'UP NEXT'} · ${nextWindow.at}`
+              : goalHit ? 'ALL WINDOWS DONE' : 'DAY WRAPPED'}
+          </span>
         </div>
         <div className="flex items-end justify-between gap-3">
           <div className="flex flex-col gap-0.75">
@@ -219,7 +236,8 @@ export default function Today() {
               <>
                 <div className="text-[21px] font-medium tracking-[-0.02em]">{nextSummary}</div>
                 <div className="text-[12.5px] text-neutral-400">
-                  {plan.model === 'ladder' ? 'Ladder sets' : 'Straight sets'} · about {estimateMinutes(nextReps)} min
+                  {nextIsMissed ? 'Missed earlier · still yours' : plan.model === 'ladder' ? 'Ladder sets' : 'Straight sets'}
+                  {' '}· about {estimateMinutes(nextReps)} min
                 </div>
               </>
             ) : goalHit ? (
@@ -245,18 +263,20 @@ export default function Today() {
           <span className="text-[11.5px] text-neutral-500">Reflows if missed</span>
         </div>
         {windowRows.map((w) => (
-          <TimelineRow key={w.id} time={w.time} state={w.state}>
+          <TimelineRow
+            key={w.id}
+            time={w.time}
+            state={w.state}
+            onClick={w.actionable ? () => navigate(sessionUrl(w.window)) : undefined}
+          >
             <span className="flex-1 flex flex-col gap-px">
               <span className="text-[13.5px] font-medium">{w.name}</span>
               <span className="text-[11px] text-neutral-500">{w.sub}</span>
             </span>
             {w.actionable && (
-              <Button
-                variant="secondary" className="h-7.5 px-3 text-xs flex-none"
-                onClick={() => navigate(sessionUrl(w.window))}
-              >
-                Start
-              </Button>
+              <span className="text-[11.5px] flex-none" style={{ color: w.state === 'missed' ? '#f2c14e' : '#b5abfc' }}>
+                {w.state === 'missed' ? 'Catch up ›' : 'Start ›'}
+              </span>
             )}
           </TimelineRow>
         ))}

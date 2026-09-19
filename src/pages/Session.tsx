@@ -204,14 +204,33 @@ export default function Session() {
     onBank: handleBank,
   });
 
-  const startNextItem = () => {
+  const goToItem = (index: number) => {
     setResting(false);
     setRestLeft(REST_SECONDS);
     setRestEndsAt(null);
-    setItemIndex((i) => i + 1);
-    engine.reset(TEMPO_RANGE[queue[itemIndex + 1].exercise].default);
+    setItemIndex(index);
+    engine.reset(TEMPO_RANGE[queue[index].exercise].default);
   };
+
+  const startNextItem = () => goToItem(itemIndex + 1);
   startNextItemRef.current = startNextItem;
+
+  /** Moves past an exercise without banking it - for the pull-up set you can't
+   * do because there's no bar where you are.
+   *
+   * Nothing is logged and the window is never marked done, so the set stays
+   * outstanding and can be picked up again from Today rather than being
+   * written off. `from` is the item being skipped: the current one from the
+   * session screen, the one being rested for from the rest screen. */
+  const skipItem = (from: number) => {
+    stopSpeech();
+    engine.stop();
+    if (from + 1 <= queue.length - 1) {
+      goToItem(from + 1);
+    } else {
+      navigate('/today');
+    }
+  };
 
   const cue = engine.state.running
     ? (engine.state.phase === 'down' ? 'DOWN' : 'UP')
@@ -251,6 +270,13 @@ export default function Session() {
           <Button variant="primary" block className="h-12 text-[15px]" onClick={startNextItem}>
             Skip rest, start now
           </Button>
+          <button
+            type="button"
+            onClick={() => skipItem(itemIndex + 1)}
+            className="h-8 text-[12.5px] text-neutral-500 cursor-pointer"
+          >
+            Skip {EXERCISE_LABELS[nextItem.exercise].toLowerCase()}
+          </button>
         </div>
       </div>
     );
@@ -460,6 +486,16 @@ export default function Session() {
       <Button variant="ghost" block className="h-9.5" onClick={engine.endSet}>
         {isBaseline ? 'End test' : `End set, bank ${engine.state.count} reps`}
       </Button>
+      {/* A max test decides the whole plan, so that one isn't skippable. */}
+      {!isBaseline && (
+        <button
+          type="button"
+          onClick={() => skipItem(itemIndex)}
+          className="h-8 text-[12.5px] text-neutral-500 cursor-pointer"
+        >
+          {hasNextItem ? 'Skip this exercise →' : 'Skip this set'}
+        </button>
+      )}
 
       {showForm && (
         <div className="absolute inset-0 z-30 flex flex-col justify-end" style={{ background: 'rgba(11,12,20,.6)' }} onClick={() => setShowForm(false)}>

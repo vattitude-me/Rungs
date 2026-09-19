@@ -23,7 +23,10 @@ const SECONDS_PER_REP = 4;
 // one they can keep editing later with the same limits.
 const MIN_WINDOWS = 2;
 const MAX_WINDOWS = 6;
-const DEFAULT_WINDOWS = 4;
+/** Two is the easiest schedule to actually keep on day one, and adding a
+ * window is one tap away. Starting at four asked people to commit to four
+ * separate interruptions before they had done a single rep. */
+const DEFAULT_WINDOWS = 2;
 
 /** Spreads `count` windows evenly between 09:00 and 19:00. Same spacing Settings
  * uses when a window is added or removed, so the two screens agree. */

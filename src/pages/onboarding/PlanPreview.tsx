@@ -52,7 +52,7 @@ export default function PlanPreview() {
 
   const targets = computeTierTargets(maxes, FIRST_TIER);
   const rung = suggestRung(maxes.pull);
-  const windowCount = state.windows?.length ?? 4;
+  const windowCount = state.windows?.length ?? 2;
 
   const perWindow = (ex: Exercise) => Math.max(1, Math.round(targets[ex] / windowCount));
 
