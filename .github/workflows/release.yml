@@ -21,8 +21,8 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Existing tag to build and release, e.g. v1.7.1'
+      version:
+        description: 'Version to release, e.g. 1.8.9. Must match versionName in build.gradle. The tag is created for you.'
         required: true
 
 permissions:
@@ -32,16 +32,23 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # Two ways in. A pushed tag builds that tag. A manual run builds the ref
+      # it was started from and has the release create the tag, so a release
+      # never depends on being able to push a tag by hand.
       - name: Resolve tag
         id: ver
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ github.event.inputs.version }}"
+            TAG="v${V#v}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG"
 
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.ver.outputs.tag }}
 
       # A tag that disagrees with the version inside the APK ships a build
       # labelled one thing and reporting another, which is impossible to
@@ -143,10 +150,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${{ steps.ver.outputs.tag }}"
+          # --target pins the tag to the commit that was actually built, and
+          # creates it when the release is made, so a manual run needs no tag
+          # to exist beforehand.
           gh release create "$V" \
             "rungs-${V}.apk" \
             "rungs-${V}-pwa.zip" \
             --title "Rungs ${V}" \
+            --target "$GITHUB_SHA" \
             --generate-notes
 
       # Keeps the signing material out of any cached or uploaded layer, even
