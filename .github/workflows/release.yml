@@ -72,7 +72,11 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
+      # No setup-android step on purpose. The ubuntu runner image already ships
+      # the SDK at $ANDROID_HOME with licenses accepted, and
+      # android-actions/setup-android installs the legacy 'tools' package,
+      # which Google has removed from the repository - sdkmanager exits 1 on
+      # "Failed to find package 'tools'" and takes the whole release with it.
 
       - run: npm ci
 
