@@ -80,6 +80,22 @@ jobs:
 
       - run: npm ci
 
+      # Vite doesn't fail on a missing VITE_ var, it inlines undefined - so
+      # without this the build goes green and ships an APK whose Firebase
+      # config is empty, where sign-in and sync just quietly don't work.
+      - name: Check the Firebase build config is present
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        run: |
+          MISSING=""
+          [ -z "$VITE_FIREBASE_API_KEY" ] && MISSING="$MISSING VITE_FIREBASE_API_KEY"
+          [ -z "$VITE_FIREBASE_PROJECT_ID" ] && MISSING="$MISSING VITE_FIREBASE_PROJECT_ID"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing repository secrets:$MISSING. The build would succeed with an empty Firebase config."
+            exit 1
+          fi
+
       - name: Build web assets
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
