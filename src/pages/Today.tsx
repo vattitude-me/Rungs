@@ -7,6 +7,7 @@ import Button from '../components/Button';
 import { TimelineRow, type TimelineDotState } from '../components/Timeline';
 import CloudButton from '../components/CloudButton';
 import InstallCard from '../components/InstallCard';
+import SquadCard from '../components/SquadCard';
 import { getProfile, getSettings, getSetLogs } from '../db';
 import { generateDayPlan, reflowMissedWindows } from '../engine/planGenerator';
 import { localDate, dayIndexFor } from '../engine/dates';
@@ -281,6 +282,12 @@ export default function Today() {
           </TimelineRow>
         ))}
       </div>
+
+      {/* Below the windows on purpose: the day's plan is what this screen is
+          for, and the squad is the reason to go and do it - not a thing to
+          scroll past on the way. Renders nothing at all until there are
+          friends to show. */}
+      <SquadCard myReps={totalDone} />
 
       <div className="flex gap-2.5 items-center px-3.5 py-3.25 rounded-[13px] bg-accent-900">
         <span className="text-[15px]">✦</span>

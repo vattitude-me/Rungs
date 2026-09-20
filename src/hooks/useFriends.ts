@@ -43,6 +43,10 @@ export interface FriendsState {
   remove: (friendUid: string) => Promise<void>;
   nudge: (friendUid: string, phrase: NudgePhraseId) => Promise<{ ok: boolean; message: string }>;
   dismiss: (id: string) => Promise<void>;
+  /** Hides a row pending an undo. Nothing is deleted until `remove` runs. */
+  hide: (friendUid: string) => void;
+  /** Puts a hidden row back, cancelling a pending removal. */
+  unhide: (friendUid: string) => void;
 }
 
 export function useFriends(myName: string): FriendsState {
@@ -51,6 +55,10 @@ export function useFriends(myName: string): FriendsState {
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [me, setMe] = useState<PublicProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Friends hidden pending an undo. Local only - nothing has been deleted
+   * server-side while a uid sits in here, which is what makes the undo real
+   * rather than a re-add. */
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
 
   const uid = account?.uid;
 
@@ -134,8 +142,37 @@ export function useFriends(myName: string): FriendsState {
   const remove = useCallback(async (friendUid: string) => {
     if (!uid) return;
     await (await friendsModule()).removeFriend(uid, friendUid);
+    // Drop the hide once the delete has actually happened. Leaving it set
+    // would make this uid invisible for the rest of the session, so re-adding
+    // the same person would appear to do nothing at all.
+    setHidden((prev) => {
+      if (!prev.has(friendUid)) return prev;
+      const next = new Set(prev);
+      next.delete(friendUid);
+      return next;
+    });
     await refresh();
   }, [uid, refresh]);
+
+  /** Hides a friend locally without touching the server, so a removal can be
+   * taken back.
+   *
+   * Removing a friend deletes both edges, and re-adding means a fresh invite
+   * code and a request the other person has to accept again - there is no undo
+   * once it has gone through. So the row disappears first and the delete is
+   * held; only when the undo window closes does anything irreversible happen.
+   */
+  const hide = useCallback((friendUid: string) => {
+    setHidden((prev) => new Set(prev).add(friendUid));
+  }, []);
+
+  const unhide = useCallback((friendUid: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      next.delete(friendUid);
+      return next;
+    });
+  }, []);
 
   const nudge = useCallback(async (friendUid: string, phrase: NudgePhraseId) => {
     if (!uid) return { ok: false, message: 'Sign in first.' };
@@ -155,5 +192,13 @@ export function useFriends(myName: string): FriendsState {
     await (await friendsModule()).dismissInbox(uid, id);
   }, [uid]);
 
-  return { friends, inbox, me, error, refresh, addFriend, accept, decline, remove, nudge, dismiss };
+  // Hidden rows are filtered at the edge of the hook rather than in the page,
+  // so every consumer - Squad and the home card alike - agrees on who is in
+  // the squad while a removal is still undoable.
+  const visible = friends?.filter((f) => !hidden.has(f.uid));
+
+  return {
+    friends: visible, inbox, me, error, refresh,
+    addFriend, accept, decline, remove, nudge, dismiss, hide, unhide,
+  };
 }

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Check, Copy, Hand, Share2, Trash2, UserPlus, X,
+  Check, Copy, Hand, Share2, Trash2, Undo2, UserPlus, X,
 } from 'lucide-react';
 import Button from '../components/Button';
 import Tag from '../components/Tag';
@@ -29,6 +29,21 @@ const PHRASES: { id: NudgePhraseId; text: string }[] = [
 
 function phraseText(id: string): string {
   return PHRASES.find((p) => p.id === id)?.text ?? 'nudged you';
+}
+
+/** How long a removed friend can be brought back.
+ *
+ * Long enough to notice the row vanish and react, short enough that the
+ * removal doesn't feel like it silently didn't happen. Removing is not
+ * reversible once it reaches the server - both edges go, and getting back
+ * means a fresh request the other person has to accept - so this window is
+ * the only safety net there is. */
+const UNDO_WINDOW_MS = 6000;
+
+/** "12,480" - thousands separated, because a five-figure rep count read as a
+ * solid block of digits is a number nobody can compare at a glance. */
+function formatReps(n: number): string {
+  return n.toLocaleString();
 }
 
 /** Today, as the app's local date. Duplicated from `cloud/friends` for the
@@ -101,6 +116,8 @@ export default function Squad() {
   const [nudging, setNudging] = useState<Friend | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState<Friend | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<Friend | null>(null);
 
   const friends = useFriends(name);
   const codeError = friends.me?.code ? null : (friends.error ?? sharedProfileError());
@@ -139,6 +156,50 @@ export default function Squad() {
       text: result.ok ? `Sent to ${target.name}.` : result.message,
     });
   };
+
+  /** Starts a removal that can still be taken back.
+   *
+   * The row goes immediately, because a confirmation that leaves the person
+   * sitting there looks like it failed. What it doesn't do is delete anything:
+   * the friendship is only torn down when the undo window closes, so the
+   * mis-tap this whole flow exists for costs nothing but a moment.
+   */
+  const pendingRemovalRef = useRef<Friend | null>(null);
+  pendingRemovalRef.current = pendingRemoval;
+
+  const beginRemoval = (friend: Friend) => {
+    setRemoving(null);
+    friends.hide(friend.uid);
+    setPendingRemoval(friend);
+  };
+
+  const undoRemoval = () => {
+    if (!pendingRemoval) return;
+    friends.unhide(pendingRemoval.uid);
+    setPendingRemoval(null);
+  };
+
+  // Commits the held removal once the undo window closes. Also runs on
+  // unmount, so navigating away confirms rather than silently abandoning it -
+  // leaving the friend hidden but not removed would be the one outcome that
+  // matches neither button.
+  useEffect(() => {
+    if (!pendingRemoval) return;
+    const friend = pendingRemoval;
+    const commit = () => { void friends.remove(friend.uid); };
+    const id = setTimeout(() => {
+      commit();
+      setPendingRemoval(null);
+    }, UNDO_WINDOW_MS);
+    return () => {
+      clearTimeout(id);
+      // Distinguishes "the timer fired" from "this screen went away with a
+      // removal still held" - only the latter needs committing here, and
+      // setPendingRemoval(null) above has already cleared it in the former.
+      if (pendingRemovalRef.current === friend) commit();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRemoval]);
 
   const share = async () => {
     if (!friends.me?.code) return;
@@ -287,8 +348,34 @@ export default function Squad() {
       ) : (
         <div className="flex flex-col gap-2">
           {friends.friends.map((f) => (
-            <FriendRow key={f.uid} friend={f} onNudge={() => setNudging(f)} onRemove={() => void friends.remove(f.uid)} />
+            <FriendRow
+              key={f.uid}
+              friend={f}
+              onNudge={() => setNudging(f)}
+              onRemove={() => setRemoving(f)}
+            />
           ))}
+        </div>
+      )}
+
+      {/* The undo bar for a removal still in flight. Sits with the list rather
+          than floating over the screen: the row it refers to has just left
+          this exact spot, so this is where the eye already is. */}
+      {pendingRemoval && (
+        <div
+          className="p-3 rounded-xl flex items-center gap-2.5"
+          style={{ background: 'rgba(220,130,130,.12)' }}
+        >
+          <span className="flex-1 text-[12.5px] leading-[1.45]" style={{ color: '#e6a3a3' }}>
+            Removed {pendingRemoval.name}.
+          </span>
+          <button
+            onClick={undoRemoval}
+            className="h-8 px-3 rounded-lg flex items-center gap-1.5 text-[12px] font-medium cursor-pointer bg-surface"
+          >
+            <Undo2 size={13} />
+            Undo
+          </button>
         </div>
       )}
 
@@ -371,6 +458,14 @@ export default function Squad() {
           onClose={() => setNudging(null)}
         />
       )}
+
+      {removing && (
+        <RemoveSheet
+          friend={removing}
+          onConfirm={() => beginRemoval(removing)}
+          onClose={() => setRemoving(null)}
+        />
+      )}
     </Shell>
   );
 }
@@ -396,11 +491,12 @@ function FriendRow({
   onNudge: () => void;
   onRemove: () => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
-
-  // A percentage from a previous day is not today's progress. Showing it as if
-  // it were would tell you a friend had already trained when they hadn't.
-  const percent = friend.day === localDay() ? friend.percent : 0;
+  // Figures from a previous day are not today's progress. Showing them as if
+  // they were would tell you a friend had already trained when they hadn't.
+  const isToday = friend.day === localDay();
+  const percent = isToday ? friend.percent : 0;
+  const todayReps = isToday ? (friend.todayReps ?? 0) : 0;
+  const lifetime = friend.lifetimeReps ?? 0;
 
   return (
     <div className="p-3 rounded-xl bg-surface flex items-center gap-2.75">
@@ -418,6 +514,23 @@ function FriendRow({
             <Tag variant="outline" className="flex-none">{friend.streak}d</Tag>
           )}
         </span>
+
+        {/* Today's reps lead, because that is the number two people can
+            actually race on. Percent is kept as the bar rather than a figure -
+            it says how far through their own day they are, which is a
+            different question from who has done more. */}
+        <span className="flex items-baseline gap-1.5">
+          <span className="text-[12.5px] font-medium tabular-nums" style={{ color: percent >= 100 ? '#7fd6a2' : '#d2cefd' }}>
+            {formatReps(todayReps)}
+          </span>
+          <span className="text-[10.5px] text-neutral-500">today</span>
+          {lifetime > 0 && (
+            <span className="text-[10.5px] text-neutral-600 truncate">
+              · {formatReps(lifetime)} all-time
+            </span>
+          )}
+        </span>
+
         <span className="flex items-center gap-1.75">
           <span className="flex-1 h-1.5 rounded-full bg-bg overflow-hidden">
             <span
@@ -434,42 +547,80 @@ function FriendRow({
         </span>
       </span>
 
-      {confirming ? (
-        <span className="flex items-center gap-1 flex-none">
+      <span className="flex items-center gap-1 flex-none">
+        <button
+          onClick={onNudge}
+          aria-label={`Nudge ${friend.name}`}
+          className="w-9 h-9 rounded-full bg-accent-800 grid place-items-center cursor-pointer"
+        >
+          <Hand size={16} />
+        </button>
+        <button
+          onClick={onRemove}
+          aria-label={`Remove ${friend.name}`}
+          className="w-7 h-9 grid place-items-center text-neutral-600 cursor-pointer"
+        >
+          <Trash2 size={14} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** The removal confirmation.
+ *
+ * A sheet rather than the two inline buttons this used to be. The inline
+ * version put "Remove" exactly where the nudge button had been a moment
+ * earlier, so the second tap of a double-tap landed on it - the friend was
+ * gone before the user had read anything. A sheet moves the destructive
+ * button somewhere the finger isn't already heading, and says who is about to
+ * be removed and what it costs.
+ */
+function RemoveSheet({
+  friend, onConfirm, onClose,
+}: {
+  friend: Friend;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(0,0,0,.55)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[420px] rounded-t-[20px] bg-surface p-5 pb-8 flex flex-col gap-3.5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2.75">
+          <span
+            style={{ background: chipColor(friend.uid) }}
+            className="w-9.5 h-9.5 flex-none rounded-full grid place-items-center text-[14px] font-medium"
+          >
+            {initial(friend.name)}
+          </span>
+          <span className="flex-1 text-[15px] font-medium">Remove {friend.name}?</span>
+        </div>
+
+        <div className="text-[12.5px] leading-[1.5] text-neutral-400">
+          You'll both drop off each other's squad, and neither of you can nudge
+          the other. To undo it properly you'd need their code again.
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="ghost" className="flex-1 h-11" onClick={onClose}>
+            Keep
+          </Button>
           <button
-            onClick={onRemove}
-            aria-label={`Remove ${friend.name}`}
-            className="h-8 px-2.5 rounded-lg text-[11.5px] cursor-pointer"
+            onClick={onConfirm}
+            className="flex-1 h-11 rounded-xl text-[14px] font-medium cursor-pointer"
             style={{ background: 'rgba(220,130,130,.15)', color: '#e6a3a3' }}
           >
             Remove
           </button>
-          <button
-            onClick={() => setConfirming(false)}
-            aria-label="Cancel"
-            className="w-8 h-8 rounded-lg grid place-items-center text-neutral-500 cursor-pointer"
-          >
-            <X size={14} />
-          </button>
-        </span>
-      ) : (
-        <span className="flex items-center gap-1 flex-none">
-          <button
-            onClick={onNudge}
-            aria-label={`Nudge ${friend.name}`}
-            className="w-9 h-9 rounded-full bg-accent-800 grid place-items-center cursor-pointer"
-          >
-            <Hand size={16} />
-          </button>
-          <button
-            onClick={() => setConfirming(true)}
-            aria-label={`Remove ${friend.name}`}
-            className="w-7 h-9 grid place-items-center text-neutral-600 cursor-pointer"
-          >
-            <Trash2 size={14} />
-          </button>
-        </span>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

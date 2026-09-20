@@ -198,6 +198,19 @@ export async function getAllSetLogs(): Promise<SetLog[]> {
   return live(await db.setLogs.toArray());
 }
 
+/** Every rep this account has ever banked, tombstones excluded.
+ *
+ * Summed from the logs rather than kept as a running counter, because a
+ * counter and the logs can disagree - a deleted set, or a merge that brings in
+ * another device's history, would leave the two permanently out of step, and
+ * the logs are the record of truth. The table is small enough that a full scan
+ * costs nothing at sync cadence.
+ */
+export async function getLifetimeReps(): Promise<number> {
+  const logs = await getAllSetLogs();
+  return logs.reduce((sum, log) => sum + log.reps, 0);
+}
+
 export async function saveSetLog(log: SetLog): Promise<void> {
   await db.setLogs.put(stamped(log));
   markChanged();

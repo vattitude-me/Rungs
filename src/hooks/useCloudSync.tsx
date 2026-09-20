@@ -70,7 +70,7 @@ export function syncReport(): SyncReport | null {
  */
 async function publishSharedProfile(uid: string): Promise<void> {
   try {
-    const [{ getProfile, getSetLogs, getDayPlan, getStreak }, dates, friends] = await Promise.all([
+    const [{ getProfile, getSetLogs, getDayPlan, getStreak, getLifetimeReps }, dates, friends] = await Promise.all([
       import('../db'),
       import('../engine/dates'),
       import('../cloud/friends'),
@@ -80,15 +80,17 @@ async function publishSharedProfile(uid: string): Promise<void> {
     if (!profile?.onboardingComplete) return;
 
     const today = dates.localDate();
-    const [logs, plan, streak] = await Promise.all([
-      getSetLogs(today), getDayPlan(today), getStreak(),
+    const [logs, plan, streak, lifetime] = await Promise.all([
+      getSetLogs(today), getDayPlan(today), getStreak(), getLifetimeReps(),
     ]);
 
     const done = logs.reduce((sum, log) => sum + log.reps, 0);
     const goal = plan?.tier ?? profile.tier ?? 100;
     const percent = goal > 0 ? (100 * done) / goal : 0;
 
-    await friends.publishProfile(uid, profile.name, percent, streak.current, today);
+    await friends.publishProfile(
+      uid, profile.name, percent, streak.current, today, done, lifetime
+    );
   } catch (e) {
     // Non-fatal for sync itself - a workout backs up fine whether or not the
     // shareable profile went out. But swallowing it entirely is what made a

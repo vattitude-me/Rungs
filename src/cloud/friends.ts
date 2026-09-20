@@ -78,7 +78,7 @@ export function phraseText(id: string): string {
 export interface PublicProfile {
   uid: string;
   name: string;
-  /** Invite code, so the owner can show their own without a second read. */
+  /** Invite code, so the owner can show their own without a session read. */
   code?: string;
   /** How far round today's target, 0-100. */
   percent: number;
@@ -87,6 +87,15 @@ export interface PublicProfile {
    * friend in another timezone - or one who hasn't opened the app since
    * yesterday - would show last night's ring as if it were today's. */
   day: string;
+  /** Reps banked today, the live number the squad competes on. Percent alone
+   * can't be compared between people: 60% of a 40-rep tier and 60% of a
+   * 300-rep tier are not the same day's work, and showing them as equal is
+   * what made the leaderboard feel arbitrary. */
+  todayReps?: number;
+  /** Every rep this account has ever logged. The slow-moving figure, shown
+   * small - it rewards the people who have been here longest without letting
+   * them sit permanently at the top of a daily contest. */
+  lifetimeReps?: number;
   updatedAt: number;
 }
 
@@ -166,7 +175,9 @@ export async function publishProfile(
   name: string,
   percent: number,
   streak: number,
-  day: string
+  day: string,
+  todayReps = 0,
+  lifetimeReps = 0
 ): Promise<PublicProfile> {
   const existing = await getDoc(profileRef(uid));
   const code = existing.exists() && existing.data().code
@@ -180,6 +191,8 @@ export async function publishProfile(
     percent: Math.max(0, Math.min(100, Math.round(percent))),
     streak: Math.max(0, Math.round(streak)),
     day,
+    todayReps: Math.max(0, Math.round(todayReps)),
+    lifetimeReps: Math.max(0, Math.round(lifetimeReps)),
     updatedAt: Date.now(),
   };
   await setDoc(profileRef(uid), { ...payload, syncedAt: serverTimestamp() }, { merge: true });
@@ -302,7 +315,7 @@ export async function removeFriend(uid: string, friendUid: string): Promise<void
  */
 export async function listFriends(uid: string): Promise<Friend[]> {
   const edges = await getDocs(friendsRef(uid));
-  const friends = await Promise.all(edges.docs.map(async (edge) => {
+  const results = await Promise.all(edges.docs.map(async (edge) => {
     const data = edge.data();
     const fallback: Friend = {
       uid: edge.id,
@@ -310,18 +323,41 @@ export async function listFriends(uid: string): Promise<Friend[]> {
       percent: 0,
       streak: 0,
       day: '',
+      todayReps: 0,
+      lifetimeReps: 0,
       updatedAt: 0,
       since: (data.since as number) ?? 0,
     };
     try {
       const snap = await getDoc(profileRef(edge.id));
-      if (!snap.exists()) return fallback;
+      // A profile that reads successfully and is *absent* means that account
+      // deleted itself - `deleteFriendData` removes the profile, and is
+      // best-effort about the edges, so an edge outliving its profile is the
+      // expected shape of a deletion that happened while this device was
+      // offline. Reaping it here is what makes the removal actually propagate;
+      // without this the row sat in the list forever at 0%, tappable, nudgeable,
+      // and pointing at a uid that no longer exists.
+      if (!snap.exists()) return { friend: fallback, orphaned: true };
       const p = snap.data() as PublicProfile;
-      return { ...fallback, ...p, uid: edge.id, since: fallback.since };
+      return { friend: { ...fallback, ...p, uid: edge.id, since: fallback.since }, orphaned: false };
     } catch {
-      return fallback;
+      // A *failed* read is not evidence of anything - offline, or rules. Keep
+      // the row; deleting on a transient error would silently drop real
+      // friendships every time the network hiccuped.
+      return { friend: fallback, orphaned: false };
     }
   }));
+
+  // Sweep the orphans in the background. Not awaited: a slow delete must not
+  // hold up drawing the list, and if it fails the next refresh tries again.
+  const orphans = results.filter((r) => r.orphaned).map((r) => r.friend.uid);
+  if (orphans.length > 0) {
+    void Promise.all(orphans.map((fid) =>
+      deleteDoc(doc(friendsRef(uid), fid)).catch(() => {})
+    ));
+  }
+
+  const friends = results.filter((r) => !r.orphaned).map((r) => r.friend);
 
   // Furthest along today first - the list is meant to be a leaderboard, and a
   // stable tiebreak on name keeps it from reshuffling as percentages tie.
