@@ -1,6 +1,7 @@
 import {
   doc, getDoc, getDocs, setDoc, deleteDoc, collection, query, where, orderBy,
   limit as fsLimit, writeBatch, serverTimestamp, getCountFromServer, Timestamp,
+  startAfter, documentId, type QueryConstraint,
 } from 'firebase/firestore';
 import { cloudDb } from './firebase';
 import { stripUndefined } from './serialize';
@@ -267,6 +268,80 @@ async function fetchChangedRecords(uid: string, since: number): Promise<PulledPa
   return { records, cursor };
 }
 
+/** Reads every record in the account, ignoring `seq` entirely.
+ *
+ * The safety net for the one failure the incremental pull cannot see. `seq` is
+ * written as a server sentinel, so between a record landing and the server
+ * resolving it the field is absent - and a Firestore inequality filter does
+ * not match a document whose field is missing or of another type. Such a
+ * record is invisible to `where('seq', '>', ...)` at every cursor, including
+ * zero. It is not late; it is permanently unreachable by that query.
+ *
+ * That turns a transient write into a stuck account: the count sees the
+ * records, the pull returns nothing, the data-loss guard concludes this device
+ * has failed to read an account that has data, and withholds the push forever.
+ * No amount of retrying, signing out, or reinstalling clears it, because
+ * nothing any client does resolves a sentinel that was already written.
+ *
+ * So when the two disagree, this reads the collection by document id instead.
+ * It costs a full scan, which is why it is not the default path - but it is
+ * bounded by the account's size and only runs when the fast path has provably
+ * come up short.
+ */
+async function fetchAllRecords(uid: string): Promise<PulledPage> {
+  const records: SyncRecord[] = [];
+  let cursor = 0;
+  let after: string | null = null;
+
+  for (;;) {
+    const constraints: QueryConstraint[] = [orderBy(documentId()), fsLimit(PAGE_SIZE)];
+    if (after !== null) constraints.splice(1, 0, startAfter(after));
+    const page = await getDocs(query(recordsRef(uid), ...constraints));
+    if (page.empty) break;
+
+    for (const d of page.docs) {
+      const data = d.data();
+      // Still advance the cursor from any resolved seq, so a later incremental
+      // pull picks up where this left off rather than rescanning.
+      cursor = Math.max(cursor, seqMillis(data.seq));
+      const table = data.table as SyncedTable;
+      if (!TABLE_NAMES.includes(table)) continue;
+      records.push({
+        table,
+        id: String(data.id),
+        updatedAt: Number(data.updatedAt) || 0,
+        ...(data.deletedAt ? { deletedAt: Number(data.deletedAt) } : {}),
+        row: (data.row ?? {}) as Record<string, unknown>,
+      });
+    }
+
+    // Repair the documents that caused this scan. A record with no usable
+    // `seq` stays invisible to every incremental pull on every device until
+    // something rewrites it, so healing it here is what stops this being a
+    // permanent slow path - and what stops the next device hitting the same
+    // stuck guard. Best-effort and unawaited: the records are already in hand,
+    // and a failed repair only means the scan runs again next time.
+    const broken = page.docs.filter((d) => seqMillis(d.data().seq) === 0);
+    if (broken.length > 0) {
+      void (async () => {
+        try {
+          const batch = writeBatch(cloudDb());
+          for (const d of broken) batch.set(d.ref, { seq: serverTimestamp() }, { merge: true });
+          await batch.commit();
+        } catch {
+          // Nothing to do - the read already succeeded, which is what the
+          // caller needed. The next pass tries again.
+        }
+      })();
+    }
+
+    if (page.docs.length < PAGE_SIZE) break;
+    after = page.docs[page.docs.length - 1].id;
+  }
+
+  return { records, cursor };
+}
+
 interface PulledPage {
   records: SyncRecord[];
   /** How far the cloud has been read, in arrival order. */
@@ -366,6 +441,22 @@ export async function syncRecords(
       // records only have a `seq` once the server has resolved it, and the
       // cursor has to reflect that value or the next pull re-delivers them all.
       ({ records: incoming, cursor } = await fetchChangedRecords(uid, since));
+    }
+  }
+
+  // The pull returned nothing. Before believing that, check it against a count
+  // that does not depend on `seq` - because a record whose sentinel never
+  // resolved is invisible to the incremental query at every cursor, and that
+  // disagreement is the only evidence of it there will ever be.
+  //
+  // This is checked on any empty pull, not only a first one. The stuck state
+  // survives reinstalls and sign-outs precisely because it lives in the cloud
+  // document rather than on the device, so "have we pulled before" says
+  // nothing about whether it applies.
+  if (incoming.length === 0) {
+    const cloudCount = await countCloudRecords(uid);
+    if (cloudCount !== null && cloudCount > 0) {
+      ({ records: incoming, cursor } = await fetchAllRecords(uid));
     }
   }
 

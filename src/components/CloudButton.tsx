@@ -1,4 +1,5 @@
-import { CloudUpload, CloudOff, RefreshCw, TriangleAlert, Check } from 'lucide-react';
+import { useState } from 'react';
+import { CloudUpload, CloudOff, RefreshCw, TriangleAlert, Check, X } from 'lucide-react';
 import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
 
@@ -23,6 +24,7 @@ import { useCloudSync } from '../hooks/useCloudSync';
  */
 export default function CloudButton() {
   const { account, state, signIn, syncNow } = useCloudSync();
+  const [showing, setShowing] = useState(false);
 
   if (!cloudConfigured || account === undefined) return null;
 
@@ -59,18 +61,66 @@ export default function CloudButton() {
     : state.status === 'error' ? state.message
     : 'Synced · tap to refresh';
 
+  // `title` is a hover tooltip, and there is no hover on a phone - so on the
+  // one platform this app mainly ships to, the error state was a red triangle
+  // that explained nothing and whose only action was to retry the thing that
+  // had just failed. Tapping an error now opens the message instead.
+  const isError = state.status === 'error';
+
   return (
-    <button
-      type="button"
-      onClick={() => void syncNow()}
-      disabled={busy}
-      aria-label={label}
-      title={label}
-      className={`w-9.5 h-9.5 flex-none rounded-full bg-surface grid place-items-center cursor-pointer disabled:opacity-100 ${
-        state.status === 'error' ? 'text-danger' : 'text-neutral-400'
-      }`}
-    >
-      <Icon size={16} strokeWidth={1.9} className={busy ? 'animate-spin' : ''} />
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => (isError ? setShowing(true) : void syncNow())}
+        disabled={busy}
+        aria-label={label}
+        title={label}
+        className={`w-9.5 h-9.5 flex-none rounded-full bg-surface grid place-items-center cursor-pointer disabled:opacity-100 ${
+          isError ? 'text-danger' : 'text-neutral-400'
+        }`}
+      >
+        <Icon size={16} strokeWidth={1.9} className={busy ? 'animate-spin' : ''} />
+      </button>
+
+      {showing && isError && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,.55)' }}
+          onClick={() => setShowing(false)}
+        >
+          <div
+            className="w-full max-w-[420px] rounded-t-[20px] bg-surface p-5 pb-8 flex flex-col gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[15px] font-medium">Sync problem</span>
+              <button
+                onClick={() => setShowing(false)}
+                aria-label="Close"
+                className="w-8 h-8 rounded-full grid place-items-center text-neutral-500 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="text-[13px] leading-[1.55] text-neutral-300">{state.message}</div>
+
+            <div className="text-[11.5px] leading-[1.5] text-neutral-500">
+              Your reps are safe on this phone either way. Don't uninstall or
+              sign out while this is showing - that's the one thing that would
+              lose anything not yet uploaded.
+            </div>
+
+            <button
+              onClick={() => { setShowing(false); void syncNow(); }}
+              className="h-11 rounded-xl bg-accent text-[14px] font-medium cursor-pointer"
+              style={{ color: '#161826' }}
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
