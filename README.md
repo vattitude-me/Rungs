@@ -2,70 +2,40 @@
 
 A hundred a day, one rung at a time.
 
-An offline-first coaching PWA for push-ups, pull-ups and squats. You start at a
-daily total of 100 reps (split across the three by relative strength) and
-climb: 100 → 200 → 300, where 300 is 100 of each. Reps are cut into short
-windows spread through your day rather than one long session.
+[rungs.vattitude.ca](https://rungs.vattitude.ca)
 
-React 19 + Vite + TypeScript + Tailwind v4 + Dexie (IndexedDB), installable as
-a PWA on desktop/mobile web and packaged as a native Android app via Capacitor.
+Push-ups, pull-ups and squats, 100 reps a day to start. The split matches your
+current strength, so if your pull-ups are weak you'll do fewer of those and
+more of the rest. As you get stronger the daily total climbs: 100, then 200,
+then 300, which is a hundred of each. No gym, no equipment.
 
-## Development
+## How it works
 
-```bash
-npm install
-npm run dev          # http://localhost:5173
-npm run build         # production build to dist/ (auto-bumps patch version)
-npm run lint
-```
+The day's reps are cut into short windows instead of one long session. A set
+takes a couple of minutes, and you fit them in between everything else.
 
-## Android (Capacitor)
+You set your starting point with a quick baseline test. Retest whenever you
+want and the plan reshapes around your new numbers.
 
-The `android/` directory is a native Capacitor project that wraps the built
-web app (`dist/`) in a WebView shell: same HashRouter-based SPA, same Dexie
-IndexedDB storage, no server required. It's checked into the repo (standard
-Capacitor practice, it can carry native customizations), but build output,
-local SDK paths, and signing secrets are gitignored.
+During a session, voice cues and rest timers run the clock so you don't have
+to watch the screen.
 
-### One-time setup
+Streaks, personal records and your full history are on the Progress tab.
 
-Needs a JDK compatible with the Android Gradle Plugin (17–21; **not** 26) and
-the Android SDK command-line tools:
+Add friends to your squad and you can see each other's streaks.
 
-```bash
-brew install openjdk@21 android-commandlinetools
-sdkmanager --sdk_root="$(brew --prefix)/share/android-commandlinetools" \
-  "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-echo "sdk.dir=$(brew --prefix)/share/android-commandlinetools" > android/local.properties
-```
+Everything works offline and is stored on your device. Sign in and it syncs to
+your other phones, tablets and browsers.
 
-Release builds are signed. Generate a keystore once and keep it **outside
-git** and backed up somewhere durable: losing it means you can never ship
-an update to the same `applicationId` again, only a new listing:
+## Get Rungs
 
-```bash
-keytool -genkeypair -v -keystore android/keystore/release.keystore \
-  -alias hundred -keyalg RSA -keysize 2048 -validity 10000
-cp android/keystore.properties.example android/keystore.properties
-# then fill in the real store/key passwords in android/keystore.properties
-```
+- Web: open [rungs.vattitude.ca](https://rungs.vattitude.ca) and install it
+  from your browser
+- Android: grab the APK from the
+  [latest release](https://github.com/vattitude-me/Rungs/releases/latest)
+- iOS: [build from source](BUILDING.md#ios)
 
-### Building
+## Developers
 
-```bash
-export JAVA_HOME=$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home
-export ANDROID_HOME=$(brew --prefix)/share/android-commandlinetools
-
-npm run build && npx cap sync android
-cd android
-./gradlew assembleDebug      # unsigned, for sideloading/testing
-./gradlew assembleRelease    # signed with keystore.properties, for distribution
-```
-
-Output:
-- Debug: `android/app/build/outputs/apk/debug/app-debug.apk`
-- Release: `android/app/build/outputs/apk/release/app-release.apk`
-
-After changing app icons or the web app itself, re-run
-`npm run build && npx cap sync android` before rebuilding the APK: Capacitor
-copies `dist/` into the native project's assets, it doesn't read it live.
+Rungs is an offline-first PWA built with React, TypeScript and Capacitor.
+See [BUILDING.md](BUILDING.md) for the stack and build instructions.
