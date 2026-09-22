@@ -454,6 +454,7 @@ export default function Squad() {
       {nudging && (
         <NudgeSheet
           friend={nudging}
+          senderName={name.trim() || 'Rungs user'}
           onPick={(p) => void send(p)}
           onClose={() => setNudging(null)}
         />
@@ -632,9 +633,11 @@ function RemoveSheet({
  * friend can encourage you, and that is the entire vocabulary.
  */
 function NudgeSheet({
-  friend, onPick, onClose,
+  friend, senderName, onPick, onClose,
 }: {
   friend: Friend;
+  /** The name the recipient will see - the same fallback delivery uses. */
+  senderName: string;
   onPick: (phrase: NudgePhraseId) => void;
   onClose: () => void;
 }) {
@@ -659,17 +662,21 @@ function NudgeSheet({
           </button>
         </div>
 
+        {/* Each phrase is shown exactly as the recipient will read it, with
+            the sender's own name in front, so there is no guessing what it
+            turns into once sent. */}
+        <div className="text-[12px] text-neutral-400">
+          Pick one. {friend.name} will see:
+        </div>
+
         <div className="flex flex-col gap-1.5">
           {PHRASES.map((p) => (
             <button
               key={p.id}
               onClick={() => onPick(p.id)}
-              className="h-11 px-3.5 rounded-xl bg-bg text-left text-[13.5px] cursor-pointer"
+              className="min-h-11 py-2.5 px-3.5 rounded-xl bg-bg text-left text-[13.5px] cursor-pointer"
             >
-              {/* Shown as the recipient will read it, name and all, so there
-                  is no guessing what a phrase turns into once sent. */}
-              <span className="text-neutral-400">{friend.name} sees: </span>
-              <span>You {p.text}</span>
+              <span className="font-medium">{senderName}</span> {p.text}
             </button>
           ))}
         </div>
