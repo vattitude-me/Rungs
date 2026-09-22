@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Check, Copy, Hand, Share2, Trash2, Undo2, UserPlus, X,
+  Check, Copy, Hand, Share2, Undo2, UserPlus, X,
 } from 'lucide-react';
 import Button from '../components/Button';
 import Tag from '../components/Tag';
@@ -355,6 +355,9 @@ export default function Squad() {
               onRemove={() => setRemoving(f)}
             />
           ))}
+          <div className="text-[11px] text-neutral-600 px-1">
+            Press and hold a friend to remove them.
+          </div>
         </div>
       )}
 
@@ -485,6 +488,59 @@ function Shell({ children }: { children?: React.ReactNode }) {
   );
 }
 
+/** How long a press on a friend row has to last before it offers removal. */
+const HOLD_MS = 550;
+/** How far a finger can drift during a hold before it counts as a scroll. */
+const HOLD_SLOP_PX = 10;
+
+/** Press-and-hold on an element, used to reach a friend's removal.
+ *
+ * Removal used to be a trash icon right next to the nudge button, close
+ * enough that aiming for one hit the other. Holding the row is deliberate in
+ * a way a stray tap is not, and it still ends in the confirmation sheet.
+ * Right-click does the same, for anyone using a mouse. Presses that start on
+ * a button (the nudge) are left alone.
+ */
+function useHold(onHold: () => void) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+
+  const cancel = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    start.current = null;
+  };
+
+  useEffect(() => cancel, []);
+
+  const fire = () => {
+    cancel();
+    if ('vibrate' in navigator) navigator.vibrate(30);
+    onHold();
+  };
+
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+      start.current = { x: e.clientX, y: e.clientY };
+      timer.current = setTimeout(fire, HOLD_MS);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      if (!start.current) return;
+      if (Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > HOLD_SLOP_PX) cancel();
+    },
+    onPointerUp: cancel,
+    onPointerLeave: cancel,
+    onPointerCancel: cancel,
+    onContextMenu: (e: React.MouseEvent) => {
+      // Long-press on mobile also raises contextmenu; either way, one sheet.
+      e.preventDefault();
+      if ((e.target as HTMLElement).closest('button')) return;
+      fire();
+    },
+  };
+}
+
 function FriendRow({
   friend, onNudge, onRemove,
 }: {
@@ -492,6 +548,8 @@ function FriendRow({
   onNudge: () => void;
   onRemove: () => void;
 }) {
+  const hold = useHold(onRemove);
+
   // Figures from a previous day are not today's progress. Showing them as if
   // they were would tell you a friend had already trained when they hadn't.
   const isToday = friend.day === localDay();
@@ -500,7 +558,11 @@ function FriendRow({
   const lifetime = friend.lifetimeReps ?? 0;
 
   return (
-    <div className="p-3 rounded-xl bg-surface flex items-center gap-2.75">
+    <div
+      {...hold}
+      aria-label={`${friend.name}. Press and hold to remove.`}
+      className="p-3 rounded-xl bg-surface flex items-center gap-2.75 select-none [-webkit-touch-callout:none]"
+    >
       <span
         style={{ background: chipColor(friend.uid) }}
         className="w-9.5 h-9.5 flex-none rounded-full grid place-items-center text-[14px] font-medium"
@@ -548,22 +610,13 @@ function FriendRow({
         </span>
       </span>
 
-      <span className="flex items-center gap-1 flex-none">
-        <button
-          onClick={onNudge}
-          aria-label={`Nudge ${friend.name}`}
-          className="w-9 h-9 rounded-full bg-accent-800 grid place-items-center cursor-pointer"
-        >
-          <Hand size={16} />
-        </button>
-        <button
-          onClick={onRemove}
-          aria-label={`Remove ${friend.name}`}
-          className="w-7 h-9 grid place-items-center text-neutral-600 cursor-pointer"
-        >
-          <Trash2 size={14} />
-        </button>
-      </span>
+      <button
+        onClick={onNudge}
+        aria-label={`Nudge ${friend.name}`}
+        className="w-9 h-9 flex-none rounded-full bg-accent-800 grid place-items-center cursor-pointer"
+      >
+        <Hand size={16} />
+      </button>
     </div>
   );
 }
