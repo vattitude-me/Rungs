@@ -37,7 +37,6 @@ interface Standing {
   uid: string;
   name: string;
   todayReps: number;
-  lifetimeReps: number;
   percent: number;
   isMe: boolean;
 }
@@ -69,7 +68,6 @@ export default function SquadCard({ myReps }: { myReps: number }) {
         uid: f.uid,
         name: f.name,
         todayReps: fresh ? (f.todayReps ?? 0) : 0,
-        lifetimeReps: f.lifetimeReps ?? 0,
         percent: fresh ? f.percent : 0,
         isMe: false,
       };
@@ -78,7 +76,6 @@ export default function SquadCard({ myReps }: { myReps: number }) {
       uid: account.uid,
       name: 'You',
       todayReps: myReps,
-      lifetimeReps: friends.me?.lifetimeReps ?? 0,
       percent: friends.me?.day === today ? (friends.me?.percent ?? 0) : 0,
       isMe: true,
     },
@@ -120,15 +117,10 @@ export default function SquadCard({ myReps }: { myReps: number }) {
               <span className="w-4 flex-none text-[11px] tabular-nums text-neutral-600 text-right">
                 {rank}
               </span>
-              <Avatar uid={s.uid} name={s.name} size={28} isMe={s.isMe} />
+              <Avatar uid={s.uid} name={s.isMe ? name : s.name} size={28} isMe={s.isMe} />
               <span className={`flex-1 text-[12.5px] truncate ${s.isMe ? 'font-medium' : 'text-neutral-300'}`}>
                 {s.name}
               </span>
-              {s.lifetimeReps > 0 && (
-                <span className="text-[10px] tabular-nums text-neutral-600 flex-none">
-                  {formatReps(s.lifetimeReps)}
-                </span>
-              )}
               <span
                 className={`text-[12.5px] font-medium tabular-nums flex-none w-11 text-right ${
                   s.percent >= 100 ? 'text-success' : s.isMe ? 'text-accent-300' : 'text-neutral-500'
@@ -139,23 +131,25 @@ export default function SquadCard({ myReps }: { myReps: number }) {
             </div>
           );
         })}
-      </button>
 
-      {/* One line of stakes. Which line depends entirely on where the user
-          sits, because "you're 40 behind Ravi" and "you're leading" are the
-          two things worth saying and they're never both true. */}
-      <div className="flex gap-2.5 items-center px-3.5 py-3 rounded-[13px] bg-accent-900">
-        <Users size={15} className="flex-none text-accent-200" />
-        <span className="text-[12.5px] leading-[1.5] text-accent-200">
-          {myRank === 1
-            ? standings.length > 1 && standings[1].todayReps === myReps && myReps === 0
-              ? 'Nobody has started today. First rep takes the lead.'
-              : `You're leading the squad today${myReps > 0 ? ` on ${formatReps(myReps)} reps` : ''}.`
-            : gap <= 0
-              ? `Level with ${ahead?.name} — next set puts you ahead.`
-              : `${formatReps(gap)} rep${gap === 1 ? '' : 's'} behind ${ahead?.name}. ${leader.name} leads on ${formatReps(leader.todayReps)}.`}
+        {/* One line of stakes. Which line depends entirely on where the user
+            sits, because "you're 40 behind Ravi" and "you're leading" are the
+            two things worth saying and they're never both true. It sits
+            inside the card now: as its own filled banner it read as a second,
+            louder card about the same thing. */}
+        <span className="flex gap-2 items-center pt-2.5 mt-0.5 border-t border-text/7">
+          <Users size={14} className="flex-none text-accent-300" />
+          <span className="text-[12px] leading-[1.45] text-neutral-300">
+            {myRank === 1
+              ? standings.length > 1 && standings[1].todayReps === myReps && myReps === 0
+                ? 'Nobody has started today. First rep takes the lead.'
+                : "You're leading the squad today."
+              : gap <= 0
+                ? `Level with ${ahead?.name} — next set puts you ahead.`
+                : `${formatReps(gap)} rep${gap === 1 ? '' : 's'} behind ${ahead?.name}. ${leader.name} leads on ${formatReps(leader.todayReps)}.`}
+          </span>
         </span>
-      </div>
+      </button>
     </div>
   );
 }

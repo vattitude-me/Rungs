@@ -23,7 +23,8 @@ interface AvatarProps {
   name: string;
   /** Diameter in px. */
   size?: number;
-  /** The signed-in user's own row, drawn in the accent instead. */
+  /** The signed-in user's own row, drawn in the accent instead of a palette
+   * colour so it stands out in the list. */
   isMe?: boolean;
 }
 
@@ -39,7 +40,7 @@ export default function Avatar({ uid, name, size = 34, isMe }: AvatarProps) {
       }}
       className="flex-none rounded-full grid place-items-center font-medium text-text"
     >
-      {isMe ? '·' : initialOf(name)}
+      {initialOf(name)}
     </span>
   );
 }
