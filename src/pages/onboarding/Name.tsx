@@ -32,7 +32,7 @@ export default function Name() {
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-action gap-4">
       <div className="flex items-center gap-3">
-        <Button variant="icon" onClick={() => navigate('/onboarding/welcome')}><ChevronLeft size={18} /></Button>
+        <Button variant="icon" aria-label="Back" onClick={() => navigate('/onboarding/welcome')}><ChevronLeft size={18} /></Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
           <i className="block h-full bg-accent" style={{ width: '33%' }} />
         </div>
@@ -59,7 +59,7 @@ export default function Name() {
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           className="h-13 px-4 rounded-[13px] bg-surface shadow-sm text-[16px] text-text outline-none border border-transparent focus-visible:border-accent placeholder:text-neutral-600"
         />
-        {error && <span className="text-[11.5px] text-red-300 px-1">{error}</span>}
+        {error && <span className="text-[11.5px] text-danger-soft px-1">{error}</span>}
       </div>
 
       <div className="mt-auto">

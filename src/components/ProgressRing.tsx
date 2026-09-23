@@ -12,7 +12,7 @@ export default function ProgressRing({
   strokeWidth,
   progress,
   color,
-  bgColor = 'rgba(233,233,237,.10)',
+  bgColor = 'color-mix(in srgb, var(--color-text) 10%, transparent)',
   children,
 }: ProgressRingProps) {
   const radius = (size - strokeWidth) / 2;

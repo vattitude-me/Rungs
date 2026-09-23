@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { CloudUpload, CloudOff, RefreshCw, TriangleAlert, Check, X } from 'lucide-react';
+import { CloudUpload, CloudOff, RefreshCw, TriangleAlert, Check } from 'lucide-react';
 import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
+import Sheet from './Sheet';
 
 /**
  * The sync control in the Today header - shown only when sync needs the user.
@@ -83,26 +84,7 @@ export default function CloudButton() {
       </button>
 
       {showing && isError && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: 'rgba(0,0,0,.55)' }}
-          onClick={() => setShowing(false)}
-        >
-          <div
-            className="w-full max-w-[420px] rounded-t-[20px] bg-surface p-5 pb-8 flex flex-col gap-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-medium">Sync problem</span>
-              <button
-                onClick={() => setShowing(false)}
-                aria-label="Close"
-                className="w-8 h-8 rounded-full grid place-items-center text-neutral-500 cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
+        <Sheet title="Sync problem" onClose={() => setShowing(false)}>
             <div className="text-[13px] leading-[1.55] text-neutral-300">{state.message}</div>
 
             <div className="text-[11.5px] leading-[1.5] text-neutral-500">
@@ -113,13 +95,11 @@ export default function CloudButton() {
 
             <button
               onClick={() => { setShowing(false); void syncNow(); }}
-              className="h-11 rounded-xl bg-accent text-[14px] font-medium cursor-pointer"
-              style={{ color: '#161826' }}
+              className="h-11 rounded-xl bg-accent text-on-accent text-[14px] font-medium cursor-pointer"
             >
               Try again
             </button>
-          </div>
-        </div>
+        </Sheet>
       )}
     </>
   );

@@ -14,10 +14,10 @@ interface TimelineRowProps {
 }
 
 const DOT_BG: Record<TimelineDotState, string> = {
-  done: '#9184d9',
-  now: '#e9e9ed',
-  missed: '#f2c14e',
-  later: 'rgba(233,233,237,.20)',
+  done: 'var(--color-accent)',
+  now: 'var(--color-text)',
+  missed: 'var(--color-gold)',
+  later: 'color-mix(in srgb, var(--color-text) 20%, transparent)',
 };
 
 export function TimelineRow({ time, state, onClick, children }: TimelineRowProps) {
@@ -36,7 +36,7 @@ export function TimelineRow({ time, state, onClick, children }: TimelineRowProps
         <span
           style={{
             background: DOT_BG[state],
-            boxShadow: state === 'now' ? '0 0 0 5px rgba(145,132,217,.22)' : 'none',
+            boxShadow: state === 'now' ? '0 0 0 5px color-mix(in srgb, var(--color-accent) 22%, transparent)' : 'none',
           }}
           className="w-[11px] h-[11px] rounded-full flex-none block"
         />

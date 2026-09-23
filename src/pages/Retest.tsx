@@ -85,7 +85,7 @@ export default function Retest() {
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-action gap-4">
       <div className="flex items-center gap-3">
-        <Button variant="icon" onClick={() => navigate(-1)}><ChevronLeft size={18} /></Button>
+        <Button variant="icon" aria-label="Back" onClick={() => navigate(-1)}><ChevronLeft size={18} /></Button>
         <span className="text-[15px] font-medium">Retest your maxes</span>
       </div>
 
@@ -124,10 +124,10 @@ export default function Retest() {
                   value={drafts[t.key]}
                   onChange={(e) => setDrafts((d) => ({ ...d, [t.key]: e.target.value }))}
                   className="w-19 h-11 px-3 rounded-[11px] bg-bg text-center text-[16px] tabular-nums text-text outline-none border focus-visible:border-accent"
-                  style={{ borderColor: err ? '#e0645f' : 'transparent' }}
+                  style={{ borderColor: err ? 'var(--color-danger)' : 'transparent' }}
                 />
               </div>
-              {err && <span className="text-[11px] text-[#e0645f] px-1">{err}</span>}
+              {err && <span className="text-[11px] text-danger-soft px-1">{err}</span>}
             </div>
           );
         })}

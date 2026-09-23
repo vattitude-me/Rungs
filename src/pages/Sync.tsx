@@ -85,6 +85,7 @@ export default function Sync() {
       <div className="flex items-center gap-3">
         <Button
           variant="icon"
+          aria-label="Back"
           onClick={() => {
             // Back into onboarding is the wrong destination once there's a
             // profile to use - a restore is exactly the case where the splash

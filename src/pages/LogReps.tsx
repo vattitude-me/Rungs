@@ -13,7 +13,7 @@ export default function LogReps() {
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-6 gap-4">
       <div className="flex items-center gap-3">
-        <Button variant="icon" onClick={() => navigate(-1)}><ChevronLeft size={18} /></Button>
+        <Button variant="icon" aria-label="Back" onClick={() => navigate(-1)}><ChevronLeft size={18} /></Button>
         <div className="text-[15px] font-medium">Log reps</div>
       </div>
 

@@ -104,9 +104,9 @@ export default function Today() {
   const totalLeft = Math.max(0, dailyGoal - totalDone);
   const goalHit = totalDone >= dailyGoal;
   const totalPct = Math.round((100 * totalDone) / dailyGoal);
-  // Gold at 100%, a brighter lavender once past 75% - a visible lift before the finish line.
-  const goalBarColor = goalHit ? '#f2c14e' : totalPct >= 75 ? '#b5abfc' : '#5d5294';
-  const goalTextColor = goalHit ? '#f2c14e' : totalPct >= 75 ? '#d2cefd' : '#75798c';
+  // Gold at 100%, a brighter accent once past 75% - a visible lift before the finish line.
+  const goalBarColor = goalHit ? 'var(--color-gold)' : totalPct >= 75 ? 'var(--color-accent-400)' : 'var(--color-accent-700)';
+  const goalTextColor = goalHit ? 'var(--color-gold)' : totalPct >= 75 ? 'var(--color-accent-300)' : 'var(--color-neutral-600)';
 
   const retestDue = shouldRebaseline(
     profile.lastRebaselineAt,
@@ -224,7 +224,7 @@ export default function Today() {
       )}
 
       <LitCard className="flex flex-col gap-2.75 p-4">
-        <div className="text-[10px] tracking-[0.12em]" style={{ color: nextIsMissed ? '#f2c14e' : undefined }}>
+        <div className="text-[10px] tracking-[0.12em]" style={{ color: nextIsMissed ? 'var(--color-gold)' : undefined }}>
           <span className={nextIsMissed ? '' : 'text-accent'}>
             {nextWindow
               ? `${nextIsMissed ? 'PICK UP' : 'UP NEXT'} · ${nextWindow.at}`
@@ -275,7 +275,7 @@ export default function Today() {
               <span className="text-[11px] text-neutral-500">{w.sub}</span>
             </span>
             {w.actionable && (
-              <span className="text-[11.5px] flex-none" style={{ color: w.state === 'missed' ? '#f2c14e' : '#b5abfc' }}>
+              <span className="text-[11.5px] flex-none" style={{ color: w.state === 'missed' ? 'var(--color-gold)' : 'var(--color-accent-400)' }}>
                 {w.state === 'missed' ? 'Catch up ›' : 'Start ›'}
               </span>
             )}

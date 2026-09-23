@@ -118,6 +118,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   nudges: false,
   waitlistSquad: false,
   defaultTempo: 2.5,
+  theme: 'violet',
   updatedAt: 0,
 };
 

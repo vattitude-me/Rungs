@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 import Tag from '../components/Tag';
+import Avatar from '../components/Avatar';
+import Sheet from '../components/Sheet';
 import { getProfile } from '../db';
 import { useCloudSync, sharedProfileError } from '../hooks/useCloudSync';
 import { useFriends } from '../hooks/useFriends';
@@ -92,20 +94,6 @@ async function writeClipboard(value: string): Promise<boolean> {
 
 function inviteLink(code: string): string {
   return `${window.location.origin}/squad?add=${code}`;
-}
-
-function initial(name: string): string {
-  return (name.trim()[0] ?? '?').toUpperCase();
-}
-
-/** A stable colour per friend, so the same person keeps the same chip. Hashing
- * the uid rather than the index means the colour doesn't change when the list
- * reorders, which it does constantly - it's sorted by today's progress. */
-const CHIP_COLORS = ['#423a6a', '#3f424d', '#2b2741', '#453055', '#2f3a52', '#4a3b3b'];
-function chipColor(uid: string): string {
-  let hash = 0;
-  for (let i = 0; i < uid.length; i++) hash = (hash * 31 + uid.charCodeAt(i)) >>> 0;
-  return CHIP_COLORS[hash % CHIP_COLORS.length];
 }
 
 export default function Squad() {
@@ -268,11 +256,10 @@ export default function Squad() {
       {notice && (
         <button
           onClick={() => setNotice(null)}
-          className="p-3 rounded-xl text-left text-[12.5px] leading-[1.45] cursor-pointer"
-          style={{
-            background: notice.ok ? 'rgba(120,190,150,.12)' : 'rgba(220,130,130,.12)',
-            color: notice.ok ? '#9fd8b4' : '#e6a3a3',
-          }}
+          role="status"
+          className={`p-3 rounded-xl text-left text-[12.5px] leading-[1.45] cursor-pointer ${
+            notice.ok ? 'bg-success/12 text-success' : 'bg-danger/12 text-danger-soft'
+          }`}
         >
           {notice.text}
         </button>
@@ -282,12 +269,7 @@ export default function Squad() {
           trouble to poke, and burying it under the friend list would waste it. */}
       {nudges.map((item) => (
         <div key={item.id} className="p-3 rounded-xl bg-surface flex items-center gap-2.75">
-          <span
-            style={{ background: chipColor(item.fromUid) }}
-            className="w-8.5 h-8.5 flex-none rounded-full grid place-items-center text-[13px] font-medium"
-          >
-            {initial(item.fromName)}
-          </span>
+          <Avatar uid={item.fromUid} name={item.fromName} size={34} />
           <span className="flex-1 text-[13px] leading-[1.4]">
             <span className="font-medium">{item.fromName}</span>{' '}
             <span className="text-neutral-400">
@@ -297,7 +279,7 @@ export default function Squad() {
           <button
             onClick={() => void friends.dismiss(item.id)}
             aria-label="Dismiss"
-            className="w-7 h-7 flex-none rounded-full grid place-items-center text-neutral-500 cursor-pointer"
+            className="w-9 h-9 -mr-1 flex-none rounded-full grid place-items-center text-neutral-500 cursor-pointer"
           >
             <X size={15} />
           </button>
@@ -308,12 +290,7 @@ export default function Squad() {
       {requests.map((item) => (
         <div key={item.id} className="p-3.5 rounded-xl bg-surface flex flex-col gap-2.5">
           <div className="flex items-center gap-2.75">
-            <span
-              style={{ background: chipColor(item.fromUid) }}
-              className="w-8.5 h-8.5 flex-none rounded-full grid place-items-center text-[13px] font-medium"
-            >
-              {initial(item.fromName)}
-            </span>
+            <Avatar uid={item.fromUid} name={item.fromName} size={34} />
             <span className="flex-1 text-[13px]">
               <span className="font-medium">{item.fromName}</span>
               <span className="text-neutral-400"> wants to be friends</span>
@@ -366,10 +343,10 @@ export default function Squad() {
           this exact spot, so this is where the eye already is. */}
       {pendingRemoval && (
         <div
-          className="p-3 rounded-xl flex items-center gap-2.5"
-          style={{ background: 'rgba(220,130,130,.12)' }}
+          role="status"
+          className="p-3 rounded-xl flex items-center gap-2.5 bg-danger/12"
         >
-          <span className="flex-1 text-[12.5px] leading-[1.45]" style={{ color: '#e6a3a3' }}>
+          <span className="flex-1 text-[12.5px] leading-[1.45] text-danger-soft">
             Removed {pendingRemoval.name}.
           </span>
           <button
@@ -434,15 +411,15 @@ export default function Squad() {
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
-              className="flex-1 h-10 px-3 rounded-xl bg-bg text-[15px] tracking-[0.12em] tabular-nums outline-none border border-text/10 focus:border-accent/50"
+              className="flex-1 h-11 px-3 rounded-xl bg-bg text-[15px] tracking-[0.12em] tabular-nums outline-none border border-text/10 focus:border-accent/50"
             />
             <button
               onClick={() => void submitCode()}
               disabled={busy || code.trim().length === 0}
               aria-label="Send request"
-              className="w-10 h-10 flex-none rounded-xl bg-accent grid place-items-center cursor-pointer disabled:opacity-40"
+              className="w-11 h-11 flex-none rounded-xl bg-accent text-on-accent grid place-items-center cursor-pointer disabled:opacity-40"
             >
-              <UserPlus size={17} color="#161826" />
+              <UserPlus size={17} />
             </button>
           </div>
         </div>
@@ -563,12 +540,7 @@ function FriendRow({
       aria-label={`${friend.name}. Press and hold to remove.`}
       className="p-3 rounded-xl bg-surface flex items-center gap-2.75 select-none [-webkit-touch-callout:none]"
     >
-      <span
-        style={{ background: chipColor(friend.uid) }}
-        className="w-9.5 h-9.5 flex-none rounded-full grid place-items-center text-[14px] font-medium"
-      >
-        {initial(friend.name)}
-      </span>
+      <Avatar uid={friend.uid} name={friend.name} size={38} />
 
       <span className="flex-1 flex flex-col gap-1 min-w-0">
         <span className="flex items-center gap-1.5">
@@ -583,7 +555,7 @@ function FriendRow({
             it says how far through their own day they are, which is a
             different question from who has done more. */}
         <span className="flex items-baseline gap-1.5">
-          <span className="text-[12.5px] font-medium tabular-nums" style={{ color: percent >= 100 ? '#7fd6a2' : '#d2cefd' }}>
+          <span className="text-[12.5px] font-medium tabular-nums" style={{ color: percent >= 100 ? 'var(--color-success)' : 'var(--color-accent-300)' }}>
             {formatReps(todayReps)}
           </span>
           <span className="text-[10.5px] text-neutral-500">today</span>
@@ -600,7 +572,7 @@ function FriendRow({
               className="block h-full rounded-full transition-[width] duration-500"
               style={{
                 width: `${Math.min(100, percent)}%`,
-                background: percent >= 100 ? '#7fd6a2' : '#9184d9',
+                background: percent >= 100 ? 'var(--color-success)' : 'var(--color-accent)',
               }}
             />
           </span>
@@ -613,7 +585,7 @@ function FriendRow({
       <button
         onClick={onNudge}
         aria-label={`Nudge ${friend.name}`}
-        className="w-9 h-9 flex-none rounded-full bg-accent-800 grid place-items-center cursor-pointer"
+        className="w-10 h-10 flex-none rounded-full bg-accent-800 text-accent-200 grid place-items-center cursor-pointer"
       >
         <Hand size={16} />
       </button>
@@ -638,25 +610,11 @@ function RemoveSheet({
   onClose: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,.55)' }}
-      onClick={onClose}
+    <Sheet
+      title={`Remove ${friend.name}?`}
+      onClose={onClose}
+      leading={<Avatar uid={friend.uid} name={friend.name} size={38} />}
     >
-      <div
-        className="w-full max-w-[420px] rounded-t-[20px] bg-surface p-5 pb-8 flex flex-col gap-3.5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2.75">
-          <span
-            style={{ background: chipColor(friend.uid) }}
-            className="w-9.5 h-9.5 flex-none rounded-full grid place-items-center text-[14px] font-medium"
-          >
-            {initial(friend.name)}
-          </span>
-          <span className="flex-1 text-[15px] font-medium">Remove {friend.name}?</span>
-        </div>
-
         <div className="text-[12.5px] leading-[1.5] text-neutral-400">
           You'll both drop off each other's squad, and neither of you can nudge
           the other. To undo it properly you'd need their code again.
@@ -668,14 +626,12 @@ function RemoveSheet({
           </Button>
           <button
             onClick={onConfirm}
-            className="flex-1 h-11 rounded-xl text-[14px] font-medium cursor-pointer"
-            style={{ background: 'rgba(220,130,130,.15)', color: '#e6a3a3' }}
+            className="flex-1 h-11 rounded-xl text-[14px] font-medium cursor-pointer bg-danger/15 text-danger-soft"
           >
             Remove
           </button>
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 
@@ -695,26 +651,7 @@ function NudgeSheet({
   onClose: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,.55)' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-[20px] bg-surface p-5 pb-8 flex flex-col gap-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-[15px] font-medium">Nudge {friend.name}</span>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="w-8 h-8 rounded-full grid place-items-center text-neutral-500 cursor-pointer"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
+    <Sheet title={`Nudge ${friend.name}`} onClose={onClose}>
         {/* Each phrase is shown exactly as the recipient will read it, with
             the sender's own name in front, so there is no guessing what it
             turns into once sent. */}
@@ -737,7 +674,6 @@ function NudgeSheet({
         <div className="text-[11px] leading-[1.5] text-neutral-500">
           Two nudges per friend per day, so it stays a nudge.
         </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }

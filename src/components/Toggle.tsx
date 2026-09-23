@@ -2,9 +2,12 @@ interface ToggleProps {
   on: boolean;
   onToggle: () => void;
   size?: 'default' | 'dense';
+  /** What the switch turns on, for screen readers - the visible label is
+   * usually a sibling span that isn't associated with it. */
+  label?: string;
 }
 
-export default function Toggle({ on, onToggle, size = 'default' }: ToggleProps) {
+export default function Toggle({ on, onToggle, size = 'default', label }: ToggleProps) {
   const dims = size === 'dense'
     ? { w: 42, h: 25, knob: 19 }
     : { w: 44, h: 26, knob: 20 };
@@ -13,6 +16,7 @@ export default function Toggle({ on, onToggle, size = 'default' }: ToggleProps) 
     <span
       role="switch"
       aria-checked={on}
+      aria-label={label}
       tabIndex={0}
       onClick={onToggle}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}

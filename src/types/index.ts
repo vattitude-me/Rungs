@@ -1,3 +1,5 @@
+import type { ThemeId } from '../theme';
+
 export type Exercise = 'push' | 'pull' | 'squat';
 
 export type PullRung = 0 | 1 | 2 | 3 | 4; // rows, negatives, band, partials, full
@@ -140,6 +142,9 @@ export interface AppSettings extends Synced {
   nudges: boolean; // stub, default off
   waitlistSquad: boolean;
   defaultTempo: number; // 1.00–4.00 step .25, default 2.00
+  /** Colour theme. Synced like every other setting, so a phone and a laptop
+   * agree; optional because settings saved before themes existed lack it. */
+  theme?: ThemeId;
 }
 
 /** Per-exercise tempo bounds and default, in seconds/rep. Pull-ups need a
@@ -157,15 +162,24 @@ export const EXERCISE_LABELS: Record<Exercise, string> = {
 };
 
 /** Per-exercise visual identity, shared across Today/Progress/Session so the
- * three exercises stay visually distinct everywhere using the same accent
- * ramp (push=accent, pull=accent-400, squat=accent-700). */
+ * three exercises stay visually distinct everywhere. Each is a CSS variable
+ * (index.css), normally three steps of the accent ramp, so they follow the
+ * colour theme. */
 export const EXERCISE_ICON: Record<Exercise, string> = { push: '⌃', pull: '⌄', squat: '◍' };
-export const EXERCISE_COLOR: Record<Exercise, string> = { push: '#9184d9', pull: '#b5abfc', squat: '#5d5294' };
-export const EXERCISE_CHIP_BG: Record<Exercise, string> = { push: '#423a6a', pull: '#3f424d', squat: '#2b2741' };
+export const EXERCISE_COLOR: Record<Exercise, string> = {
+  push: 'var(--color-ex-push)',
+  pull: 'var(--color-ex-pull)',
+  squat: 'var(--color-ex-squat)',
+};
+export const EXERCISE_CHIP_BG: Record<Exercise, string> = {
+  push: 'var(--color-ex-push-chip)',
+  pull: 'var(--color-ex-pull-chip)',
+  squat: 'var(--color-ex-squat-chip)',
+};
 export const EXERCISE_TINT_BG: Record<Exercise, string> = {
-  push: 'rgba(145,132,217,.16)',
-  pull: 'rgba(181,171,252,.16)',
-  squat: 'rgba(93,82,148,.22)',
+  push: 'color-mix(in srgb, var(--color-ex-push) 16%, transparent)',
+  pull: 'color-mix(in srgb, var(--color-ex-pull) 16%, transparent)',
+  squat: 'color-mix(in srgb, var(--color-ex-squat) 22%, transparent)',
 };
 
 export const PULL_RUNG_LABELS: Record<PullRung, string> = {

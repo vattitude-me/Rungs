@@ -110,7 +110,7 @@ export default function Schedule() {
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-action gap-3.75">
       <div className="flex items-center gap-3">
-        <Button variant="icon" onClick={() => navigate('/onboarding/baseline', { state: navState })}><ChevronLeft size={18} /></Button>
+        <Button variant="icon" aria-label="Back" onClick={() => navigate('/onboarding/baseline', { state: navState })}><ChevronLeft size={18} /></Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
           <i className="block h-full bg-accent" style={{ width: '100%' }} />
         </div>
@@ -153,9 +153,11 @@ export default function Schedule() {
       <div className="flex flex-col gap-2">
         {proposal.map((w, i) => (
           <div key={i} className="flex flex-col gap-2">
-            <div
+            <button
+              type="button"
               onClick={() => openEditor(i)}
-              className="flex items-center gap-3 px-3.25 py-3 rounded-[13px] bg-surface shadow-sm cursor-pointer"
+              aria-expanded={editingIndex === i}
+              className="flex items-center gap-3 px-3.25 py-3 rounded-[13px] bg-surface shadow-sm cursor-pointer text-left"
             >
               <span className="text-[13px] tabular-nums font-medium w-13 flex-none text-accent-300">{w.time}</span>
               <span className="flex-1 flex flex-col gap-0.5">
@@ -163,7 +165,7 @@ export default function Schedule() {
                 <span className="text-[11px] text-neutral-500">{w.len}</span>
               </span>
               <span className="w-5.5 h-5.5 flex-none grid place-items-center text-neutral-600 text-[13px]">›</span>
-            </div>
+            </button>
             {editingIndex === i && (
               <div className="flex items-center gap-2.5 px-3.25 py-3 rounded-[13px] bg-accent-900">
                 <input

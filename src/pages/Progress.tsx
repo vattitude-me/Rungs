@@ -6,10 +6,42 @@ import { localDate } from '../engine/dates';
 import type { StreakData, DayRecord, SetLog, Exercise } from '../types';
 import { EXERCISE_LABELS, EXERCISE_COLOR, EXERCISE_CHIP_BG, EXERCISE_ICON } from '../types';
 
-const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const EXERCISES: Exercise[] = ['push', 'pull', 'squat'];
+
 // Levels 0-4: none, started, halfway, 75%+ (brighter), 100% (gold - the payoff color).
-const CAL_BG = ['rgba(233,233,237,.05)', '#2b2741', '#5d5294', '#b5abfc', '#f2c14e'];
-const CAL_TEXT = ['#75798c', '#9397ab', '#f5f4ff', '#2b2741', '#2b2741'];
+const CAL_BG = [
+  'color-mix(in srgb, var(--color-text) 5%, transparent)',
+  'var(--color-accent-900)',
+  'var(--color-accent-700)',
+  'var(--color-accent-400)',
+  'var(--color-gold)',
+];
+const CAL_TEXT = [
+  'var(--color-neutral-600)',
+  'var(--color-neutral-500)',
+  'var(--color-accent-100)',
+  'var(--color-bg)',
+  'var(--color-bg)',
+];
+
+/** A day in one of the charts, with the date it stands for. The week chart
+ * used to label its columns M-T-W-T-F-S-S whatever day it was, over a window
+ * that actually ends today - so on a Wednesday every label was wrong. */
+interface ChartDay {
+  date: Date;
+  record: DayRecord | undefined;
+}
+
+function lastDays(count: number, byDate: Map<string, DayRecord>): ChartDay[] {
+  const today = new Date();
+  return Array.from({ length: count }, (_, k) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (count - 1 - k));
+    return { date: d, record: byDate.get(localDate(d)) };
+  });
+}
+
+const weekdayInitial = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'narrow' });
 
 function levelFromPct(pct: number): number {
   if (pct <= 0) return 0;
@@ -22,8 +54,8 @@ function levelFromPct(pct: number): number {
 export default function Progress() {
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [totalReps, setTotalReps] = useState(0);
-  const [weekRecords, setWeekRecords] = useState<(DayRecord | undefined)[]>([]);
-  const [monthRecords, setMonthRecords] = useState<(DayRecord | undefined)[]>([]);
+  const [week, setWeek] = useState<ChartDay[]>([]);
+  const [month, setMonth] = useState<ChartDay[]>([]);
   const [bests, setBests] = useState<Record<Exercise, number>>({ push: 0, pull: 0, squat: 0 });
 
   useEffect(() => {
@@ -34,23 +66,8 @@ export default function Progress() {
       setTotalReps(total);
 
       const byDate = new Map(records.map((r) => [r.date, r]));
-      const today = new Date();
-
-      const week: (DayRecord | undefined)[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        week.push(byDate.get(localDate(d)));
-      }
-      setWeekRecords(week);
-
-      const month: (DayRecord | undefined)[] = [];
-      for (let i = 27; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        month.push(byDate.get(localDate(d)));
-      }
-      setMonthRecords(month);
+      setWeek(lastDays(7, byDate));
+      setMonth(lastDays(28, byDate));
     });
 
     getAllSetLogs().then((logs: SetLog[]) => {
@@ -60,19 +77,22 @@ export default function Progress() {
     });
   }, []);
 
+  const weekRecords = week.map((d) => d.record);
+  const monthRecords = month.map((d) => d.record);
   const weekMaxCompleted = Math.max(1, ...weekRecords.flatMap((r) => r ? Object.values(r.exercises).map((e) => e.completed) : [0]));
   const monthCompletePct = monthRecords.length
     ? Math.round((100 * monthRecords.filter((r) => r?.streakCredit).length) / monthRecords.filter(Boolean).length || 0)
     : 0;
+  const todayKey = localDate();
 
   return (
     <div className="flex-1 h-full overflow-y-auto flex flex-col px-5 pt-4 pb-24 gap-3.75">
-      <div className="text-[22px] font-medium tracking-[-0.02em]">Progress</div>
+      <h1 className="text-[22px] font-medium tracking-[-0.02em]">Progress</h1>
 
       <div className="flex gap-2.5 items-stretch">
         <div
           className="flex-1 p-[15px] rounded-[15px] shadow-sm flex flex-col gap-0.5"
-          style={{ background: 'linear-gradient(150deg, #20233a, #181a28)' }}
+          style={{ background: 'linear-gradient(150deg, var(--color-lit-from), var(--color-lit-to))' }}
         >
           <span className="text-[10px] tracking-[0.12em] text-accent">STREAK</span>
           <span className="text-[34px] font-medium leading-[1.1] tabular-nums">{streak?.current ?? 0}</span>
@@ -85,9 +105,12 @@ export default function Progress() {
         <div className="flex items-center justify-between">
           <span className="text-[13px] font-medium">This week</span>
           <div className="flex gap-2.5 text-[10.5px] text-neutral-500">
-            <span className="flex items-center gap-1"><i className="w-1.75 h-1.75 rounded-sm bg-[#9184d9] block" />Push</span>
-            <span className="flex items-center gap-1"><i className="w-1.75 h-1.75 rounded-sm bg-[#b5abfc] block" />Pull</span>
-            <span className="flex items-center gap-1"><i className="w-1.75 h-1.75 rounded-sm bg-[#5d5294] block" />Squat</span>
+            {EXERCISES.map((ex) => (
+              <span key={ex} className="flex items-center gap-1">
+                <i className="w-2 h-2 rounded-sm block" style={{ background: EXERCISE_COLOR[ex] }} />
+                {ex[0].toUpperCase() + ex.slice(1)}
+              </span>
+            ))}
           </div>
         </div>
         {weekRecords.some(Boolean) ? (
@@ -95,7 +118,7 @@ export default function Progress() {
             <div className="flex items-end justify-between gap-2 h-28">
               {weekRecords.map((rec, i) => (
                 <div key={i} className="flex-1 flex items-end gap-0.5 h-full">
-                  {(['push', 'pull', 'squat'] as Exercise[]).map((ex) => {
+                  {EXERCISES.map((ex) => {
                     const completed = rec?.exercises[ex]?.completed ?? 0;
                     const pct = Math.max(2, Math.round((100 * completed) / weekMaxCompleted));
                     return (
@@ -105,8 +128,12 @@ export default function Progress() {
                 </div>
               ))}
             </div>
-            <div className="flex justify-between text-[10px] text-neutral-600">
-              {DAY_LABELS.map((d, i) => <span key={i}>{d}</span>)}
+            <div className="flex justify-between gap-2 text-[10px] text-neutral-600">
+              {week.map(({ date }, i) => (
+                <span key={i} className={`flex-1 text-center ${i === week.length - 1 ? 'text-text font-medium' : ''}`}>
+                  {weekdayInitial(date)}
+                </span>
+              ))}
             </div>
           </>
         ) : (
@@ -120,15 +147,26 @@ export default function Progress() {
           <span className="text-[11px] text-neutral-500">{monthCompletePct}% complete</span>
         </div>
         <div className="grid grid-cols-7 gap-1.5">
-          {monthRecords.map((rec, i) => {
-            const lvl = rec ? levelFromPct(rec.totalVolumePct) : 0;
+          {month.slice(0, 7).map(({ date }, i) => (
+            <span key={`h${i}`} aria-hidden className="text-center text-[9.5px] text-neutral-600">
+              {weekdayInitial(date)}
+            </span>
+          ))}
+          {month.map(({ date, record }, i) => {
+            const lvl = record ? levelFromPct(record.totalVolumePct) : 0;
+            const isToday = localDate(date) === todayKey;
             return (
               <span
                 key={i}
-                style={{ background: CAL_BG[lvl], color: CAL_TEXT[lvl] }}
-                className="aspect-square rounded-[7px] grid place-items-center text-[10px] tabular-nums"
+                title={date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                style={{
+                  background: CAL_BG[lvl],
+                  color: CAL_TEXT[lvl],
+                  boxShadow: isToday ? 'inset 0 0 0 1.5px var(--color-text)' : undefined,
+                }}
+                className={`aspect-square rounded-[7px] grid place-items-center text-[10px] tabular-nums ${isToday ? 'font-semibold' : ''}`}
               >
-                {i + 1}
+                {date.getDate()}
               </span>
             );
           })}
@@ -137,7 +175,7 @@ export default function Progress() {
 
       <div className="flex flex-col gap-2">
         <span className="text-[11px] tracking-[0.1em] text-neutral-500">PERSONAL BESTS</span>
-        {(['push', 'pull', 'squat'] as Exercise[]).map((ex) => (
+        {EXERCISES.map((ex) => (
           <div key={ex} className="flex items-center gap-2.75 px-3.25 py-3 rounded-xl bg-surface">
             <IconChip bg={EXERCISE_CHIP_BG[ex]} size={30}>{EXERCISE_ICON[ex]}</IconChip>
             <span className="flex-1 text-[13.5px]">Best {EXERCISE_LABELS[ex].toLowerCase().replace(/s$/, '')} set</span>

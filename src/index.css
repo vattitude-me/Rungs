@@ -1,12 +1,31 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Every colour the app draws with is a token here, including the ones set from
+   inline styles (those read them back as `var(--color-…)`). That is what makes
+   the colour themes below possible: a theme is nothing but a block that
+   re-points these variables, so no component has to know which one is on.
+
+   These defaults are the Violet theme. */
 @theme {
   --color-bg: #161826;
   --color-surface: #232532;
   --color-text: #e9e9ed;
+  /* Text and icons drawn on a solid accent fill. */
+  --color-on-accent: #161826;
+  /* The two stops of the one "lit" gradient panel a screen is allowed. */
+  --color-lit-from: #20233a;
+  --color-lit-to: #181a28;
+  /* Behind bottom sheets and dialogs. */
+  --color-scrim: rgba(8, 9, 14, 0.62);
 
   --color-danger: #e5484d;
+  /* Danger as text on a danger tint - the saturated red is too dark to read there. */
+  --color-danger-soft: #eaa6a6;
+  --color-success: #7fd6a2;
+  /* The payoff colour: goal hit, a full calendar day. Also marks a missed window
+     that is still yours to catch up. Deliberately the same in every theme. */
+  --color-gold: #f2c14e;
 
   --color-accent: #9184d9;
   --color-accent-100: #f5f4ff;
@@ -19,12 +38,24 @@
   --color-accent-800: #423a6a;
   --color-accent-900: #2b2741;
 
+  /* Per-exercise series colours. Normally three steps of the accent ramp, but
+     a theme can pull them further apart when its ramp is too even to tell
+     push from pull at a glance (Graphite does). */
+  --color-ex-push: var(--color-accent);
+  --color-ex-pull: var(--color-accent-400);
+  --color-ex-squat: var(--color-accent-700);
+  --color-ex-push-chip: var(--color-accent-800);
+  --color-ex-pull-chip: var(--color-neutral-800);
+  --color-ex-squat-chip: var(--color-accent-900);
+
+  /* 500 and 600 carry most captions, at 11-12px. 600 used to be #75798c,
+     which is 3.5:1 on a card - under the 4.5:1 small text needs. */
   --color-neutral-100: #f3f5fe;
   --color-neutral-200: #e4e7f5;
   --color-neutral-300: #cfd3e5;
   --color-neutral-400: #b2b6ca;
-  --color-neutral-500: #9397ab;
-  --color-neutral-600: #75798c;
+  --color-neutral-500: #9a9eb2;
+  --color-neutral-600: #8a8ea2;
   --color-neutral-700: #595d6c;
   --color-neutral-800: #3f424d;
   --color-neutral-900: #292b31;
@@ -35,7 +66,87 @@
   --radius-md: 8px;
   --radius-lg: 14px;
 
-  --shadow-sm: 0 0 0 1px #3f424d;
+  --shadow-sm: 0 0 0 1px var(--color-neutral-800);
+}
+
+/* Colour themes. Set as `data-theme` on <html> by src/theme.ts; Violet is the
+   absence of the attribute. Each one retunes the ground as well as the accent,
+   because an orange accent on a violet-tinted background still reads as a
+   purple app. The neutrals are shared. */
+:root[data-theme='ocean'] {
+  --color-bg: #131923;
+  --color-surface: #1f2530;
+  --color-lit-from: #1b2638;
+  --color-lit-to: #141a25;
+  --color-on-accent: #111722;
+  --color-accent: #5f9be3;
+  --color-accent-100: #f0f6ff;
+  --color-accent-200: #dbe9fd;
+  --color-accent-300: #b9d5fb;
+  --color-accent-400: #8cbaf5;
+  --color-accent-500: #6da6ec;
+  --color-accent-600: #4d82c6;
+  --color-accent-700: #3b6399;
+  --color-accent-800: #2b476c;
+  --color-accent-900: #1e3047;
+}
+
+:root[data-theme='lagoon'] {
+  --color-bg: #121b1c;
+  --color-surface: #1e2728;
+  --color-lit-from: #19292a;
+  --color-lit-to: #131b1d;
+  --color-on-accent: #0f1819;
+  --color-accent: #3db5a6;
+  --color-accent-100: #edfcf9;
+  --color-accent-200: #cff4ed;
+  --color-accent-300: #a2e8dc;
+  --color-accent-400: #6bd4c4;
+  --color-accent-500: #4ec2b2;
+  --color-accent-600: #33978a;
+  --color-accent-700: #28756b;
+  --color-accent-800: #1f544e;
+  --color-accent-900: #173a36;
+}
+
+:root[data-theme='ember'] {
+  --color-bg: #191716;
+  --color-surface: #262322;
+  --color-lit-from: #2a211d;
+  --color-lit-to: #1c1817;
+  --color-on-accent: #1a1311;
+  --color-accent: #e8875a;
+  --color-accent-100: #fff4ee;
+  --color-accent-200: #fde3d5;
+  --color-accent-300: #f9c6ab;
+  --color-accent-400: #f3a47c;
+  --color-accent-500: #eb9164;
+  --color-accent-600: #c86c42;
+  --color-accent-700: #9b5234;
+  --color-accent-800: #6b3b27;
+  --color-accent-900: #45281d;
+}
+
+:root[data-theme='graphite'] {
+  --color-bg: #151619;
+  --color-surface: #222327;
+  --color-lit-from: #24262c;
+  --color-lit-to: #18191c;
+  --color-on-accent: #141518;
+  --color-accent: #b4b8c8;
+  --color-accent-100: #f5f6f9;
+  --color-accent-200: #e6e8ee;
+  --color-accent-300: #d0d3dd;
+  --color-accent-400: #c2c6d3;
+  --color-accent-500: #b8bccb;
+  --color-accent-600: #8a8e9e;
+  --color-accent-700: #676b7a;
+  --color-accent-800: #43464f;
+  --color-accent-900: #2c2e35;
+  /* A grey ramp is too even to separate push from pull by step alone. */
+  --color-ex-push: #b4b8c8;
+  --color-ex-pull: #e8eaf0;
+  --color-ex-squat: #6f7382;
 }
 
 html, body, #root {
@@ -116,6 +227,29 @@ a:hover { color: var(--color-accent-400); }
 
 .route-done {
   animation: hrise 300ms ease-out;
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.sheet-enter {
+  animation: sheet-up 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.scrim-enter {
+  animation: cross-fade 160ms ease-out;
+}
+
+/* Route transitions, the counter's breathing pulse and sheet slides are all
+   decoration. Someone who has asked their OS for less motion gets none of it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 .safe-bottom {

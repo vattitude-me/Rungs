@@ -74,7 +74,7 @@ export default function PhoneFrame({ children }: PhoneFrameProps) {
     return (
       <div className="w-full h-[100dvh] bg-bg text-text flex flex-col overflow-hidden">
         <div className="flex-none safe-top" />
-        <div className="flex-1 overflow-hidden relative">{children}</div>
+        <div id="app-viewport" className="flex-1 overflow-hidden relative">{children}</div>
       </div>
     );
   }
@@ -94,7 +94,7 @@ export default function PhoneFrame({ children }: PhoneFrameProps) {
       >
         <div className="w-full h-full rounded-[36px] overflow-hidden bg-bg text-text flex flex-col relative isolate">
           <StatusBar />
-          <div className="flex-1 overflow-hidden relative">{children}</div>
+          <div id="app-viewport" className="flex-1 overflow-hidden relative">{children}</div>
         </div>
         <div
           className="absolute left-1/2 bottom-1.5 -translate-x-1/2 rounded-full"

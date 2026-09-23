@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/Button';
 import Tag from '../../components/Tag';
+import { tint } from '../../theme';
 import { EXERCISE_REFERENCE } from '../../data/exerciseReference';
 import { cloudConfigured } from '../../cloud/config';
 import type { Exercise } from '../../types';
@@ -46,7 +47,7 @@ export default function Welcome() {
         ))}
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{ background: 'linear-gradient(180deg, rgba(22,24,38,.15) 0%, rgba(22,24,38,.35) 55%, #161826 96%)' }}
+          style={{ background: `linear-gradient(180deg, ${tint('var(--color-bg)', 15)} 0%, ${tint('var(--color-bg)', 35)} 55%, var(--color-bg) 96%)` }}
         />
         <div className="absolute left-4 top-3.5 text-[11px] tracking-[0.08em] text-neutral-200 font-medium" style={{ textShadow: '0 1px 4px rgba(0,0,0,.5)' }}>
           100 &nbsp;→&nbsp; 200 &nbsp;→&nbsp; 300 REPS A DAY

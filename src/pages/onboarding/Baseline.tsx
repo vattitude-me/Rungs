@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, X } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import Button from '../../components/Button';
 import IconChip from '../../components/IconChip';
+import Sheet from '../../components/Sheet';
 import { getBaselineLogs, saveBaselineLog } from '../../db';
 import type { Exercise } from '../../types';
 
@@ -74,7 +75,7 @@ export default function Baseline() {
   return (
     <div className="route-forward relative h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-action gap-4">
       <div className="flex items-center gap-3">
-        <Button variant="icon" onClick={() => navigate('/onboarding/name')}><ChevronLeft size={18} /></Button>
+        <Button variant="icon" aria-label="Back" onClick={() => navigate('/onboarding/name')}><ChevronLeft size={18} /></Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
           <i className="block h-full bg-accent" style={{ width: '66%' }} />
         </div>
@@ -92,10 +93,11 @@ export default function Baseline() {
         {TESTS.map((t) => {
           const val = tested[t.key];
           return (
-            <div
+            <button
+              type="button"
               key={t.key}
               onClick={() => navigate(`/session?exercise=${t.key}&mode=baseline`, { state: navState })}
-              className="flex items-center gap-3.5 p-3.5 rounded-[14px] bg-surface shadow-sm cursor-pointer"
+              className="flex items-center gap-3.5 p-3.5 rounded-[14px] bg-surface shadow-sm cursor-pointer text-left"
             >
               <IconChip exercise={t.key}>{t.icon}</IconChip>
               <span className="flex-1 flex flex-col gap-px">
@@ -103,12 +105,11 @@ export default function Baseline() {
                 <span className="text-[11.5px] text-neutral-500">{t.sub}</span>
               </span>
               <span
-                className="text-xs tabular-nums"
-                style={{ color: val !== null ? '#d2cefd' : '#75798c' }}
+                className={`text-xs tabular-nums ${val !== null ? 'text-accent-300' : 'text-neutral-500'}`}
               >
                 {val !== null ? `${val} reps` : 'Test →'}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -134,25 +135,7 @@ export default function Baseline() {
       </div>
 
       {typing && (
-        <div
-          className="fixed inset-0 z-30 flex flex-col justify-end"
-          style={{ background: 'rgba(11,12,20,.6)' }}
-          onClick={() => setTyping(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-surface rounded-t-[20px] px-5 pt-4 pb-action flex flex-col gap-3.5 max-h-[85%] overflow-y-auto"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-medium">Type your numbers</span>
-              <span
-                onClick={() => setTyping(false)}
-                className="w-8 h-8 rounded-full grid place-items-center cursor-pointer text-neutral-400"
-                style={{ background: 'rgba(233,233,237,.07)' }}
-              >
-                <X size={15} />
-              </span>
-            </div>
+        <Sheet title="Type your numbers" onClose={() => setTyping(false)}>
             <div className="text-[12.5px] leading-[1.5] text-neutral-400">
               Your best single set for each, as of today. Be honest, the whole plan scales off these.
             </div>
@@ -169,14 +152,15 @@ export default function Baseline() {
                       inputMode="numeric"
                       min={0}
                       max={MAX_REPS}
+                      aria-label={t.name}
                       placeholder="—"
                       value={drafts[t.key]}
                       onChange={(e) => setDrafts((d) => ({ ...d, [t.key]: e.target.value }))}
                       className="w-20 h-11 px-3 rounded-[11px] bg-bg text-center text-[16px] tabular-nums text-text outline-none border focus-visible:border-accent"
-                      style={{ borderColor: err ? 'rgba(252,165,165,.5)' : 'transparent' }}
+                      style={{ borderColor: err ? 'var(--color-danger)' : 'transparent' }}
                     />
                   </div>
-                  {err && <span className="text-[11px] text-red-300 pl-[46px]">{err}</span>}
+                  {err && <span className="text-[11px] text-danger-soft pl-[46px]">{err}</span>}
                 </div>
               );
             })}
@@ -184,8 +168,7 @@ export default function Baseline() {
             <Button variant="primary" block className="h-12 text-[15px] mt-1" onClick={saveTyped}>
               Save my numbers
             </Button>
-          </div>
-        </div>
+        </Sheet>
       )}
     </div>
   );

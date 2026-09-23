@@ -1,9 +1,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { StatusBar, Style } from '@capacitor/status-bar';
+import { StatusBar } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { getProfile, saveProfile } from './db';
+import { getProfile, saveProfile, getSettings } from './db';
+import { applyTheme, isThemeId, storedTheme } from './theme';
 import { useReminders } from './hooks/useReminders';
 import { useAndroidBackButton } from './hooks/useAndroidBackButton';
 import { useNudgeNotifications } from './hooks/useNudgeNotifications';
@@ -59,6 +60,11 @@ function ProfileWatcher({ onChange }: { onChange: (p: Profile | null) => void })
     if (status === 'syncing') return;
     let cancelled = false;
     void getProfile().then((p) => { if (!cancelled) onChange(p ?? null); });
+    // The theme is a synced setting too, so a pass can bring in one picked on
+    // another device.
+    void getSettings().then((s) => {
+      if (!cancelled && isThemeId(s.theme) && s.theme !== storedTheme()) applyTheme(s.theme);
+    });
     return () => { cancelled = true; };
   }, [uid, status, onChange]);
 
@@ -86,9 +92,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // index.html already put the stored theme's CSS on before first paint;
+    // this finishes the job for what CSS can't reach (the native status bar),
+    // then defers to the synced setting if it disagrees with this device.
+    applyTheme(storedTheme());
+    void getSettings().then((s) => { if (isThemeId(s.theme)) applyTheme(s.theme); });
     if (!Capacitor.isNativePlatform()) return;
-    StatusBar.setStyle({ style: Style.Dark });
-    StatusBar.setBackgroundColor({ color: '#161826' });
     // Keep the WebView below the system status bar rather than drawing under
     // it - the OS clock and battery own that strip, and overlaying would put
     // app content underneath them.

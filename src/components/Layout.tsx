@@ -2,6 +2,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { CircleUser, Home, LineChart, Plus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cloudConfigured } from '../cloud/config';
+import { tint } from '../theme';
 import { useCloudSync } from '../hooks/useCloudSync';
 
 /** The tabs either side of the log button. The two sides don't have to match
@@ -35,22 +36,24 @@ export default function Layout() {
       <button
         key={path}
         onClick={() => navigate(path)}
-        className="w-16 flex-none flex flex-col items-center gap-[3px] cursor-pointer"
-        style={{ color: active ? '#d2cefd' : '#75798c' }}
+        aria-current={active ? 'page' : undefined}
+        className={[
+          'w-16 min-h-11 flex-none flex flex-col items-center justify-center gap-[3px] cursor-pointer transition-colors',
+          active ? 'text-accent-300' : 'text-neutral-600',
+        ].join(' ')}
       >
         <span className="relative">
           <Icon size={18} strokeWidth={2} />
           {badge > 0 && (
             <span
               aria-label={`${badge} waiting`}
-              className="absolute -top-1 -right-1.5 min-w-3.5 h-3.5 px-1 rounded-full grid place-items-center text-[8.5px] font-semibold tabular-nums"
-              style={{ background: '#e0806f', color: '#161826' }}
+              className="absolute -top-1 -right-1.5 min-w-3.5 h-3.5 px-1 rounded-full grid place-items-center text-[8.5px] font-semibold tabular-nums bg-danger text-white"
             >
               {badge > 9 ? '9+' : badge}
             </span>
           )}
         </span>
-        <span className="text-[9.5px] tracking-[0.02em]">{label}</span>
+        <span className={`text-[10.5px] tracking-[0.02em] ${active ? 'font-medium' : ''}`}>{label}</span>
       </button>
     );
   };
@@ -63,7 +66,7 @@ export default function Layout() {
       <nav
         className="absolute left-0 right-0 bottom-0 h-[84px] px-3.5 pb-5 flex items-center safe-bottom"
         style={{
-          background: 'linear-gradient(to top, rgba(22,24,38,.98) 55%, rgba(22,24,38,0))',
+          background: `linear-gradient(to top, ${tint('var(--color-bg)', 98)} 55%, ${tint('var(--color-bg)', 0)})`,
           backdropFilter: 'blur(8px)',
         }}
       >
@@ -85,10 +88,10 @@ export default function Layout() {
         <button
           onClick={() => navigate('/session/log')}
           aria-label="Log reps"
-          className="flex-none w-15 h-15 -mt-6 rounded-full bg-accent grid place-items-center cursor-pointer shadow-lg"
-          style={{ boxShadow: '0 6px 20px rgba(145,132,217,.45)' }}
+          className="flex-none w-15 h-15 -mt-6 rounded-full bg-accent text-on-accent grid place-items-center cursor-pointer active:scale-95 transition-transform"
+          style={{ boxShadow: `0 6px 20px ${tint('var(--color-accent)', 45)}` }}
         >
-          <Plus size={26} strokeWidth={2.5} color="#161826" />
+          <Plus size={26} strokeWidth={2.5} />
         </button>
 
         <div className="flex-1 flex items-center justify-end gap-1">

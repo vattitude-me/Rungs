@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { closeTopSheet } from '../components/Sheet';
 
 /** The two screens where back means "leave the app": the dashboard, and the
  * very first onboarding screen. Everywhere else back steps within the app. */
@@ -33,6 +34,10 @@ export function useAndroidBackButton(): void {
     let cancelled = false;
 
     CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      // An open sheet is the innermost thing on screen, so back dismisses it
+      // before it does anything to the route underneath.
+      if (closeTopSheet()) return;
+
       const path = pathRef.current;
 
       if (TAB_ROUTES.has(path)) {

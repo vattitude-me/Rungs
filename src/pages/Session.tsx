@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, Mic, PlayCircle, X } from 'lucide-react';
+import { Check, ChevronLeft, Mic, MicOff, Minus, Pause, Play, PlayCircle, Plus } from 'lucide-react';
 import Button from '../components/Button';
 import TempoSlider from '../components/TempoSlider';
 import ModeChip from '../components/ModeChip';
 import IconChip from '../components/IconChip';
+import Sheet from '../components/Sheet';
+import { tint } from '../theme';
 import { useCadenceEngine } from '../hooks/useCadenceEngine';
 import { getSettings, saveSetLog, getDayPlan, saveDayPlan, saveBaselineLog, getSetLogs } from '../db';
 import { recordDayProgress } from '../engine/planGenerator';
@@ -236,8 +238,8 @@ export default function Session() {
     ? (engine.state.phase === 'down' ? 'DOWN' : 'UP')
     : (engine.state.count > 0 ? 'PAUSED' : 'READY');
   const cueColor = engine.state.running
-    ? (engine.state.phase === 'down' ? exColor : '#e9e9ed')
-    : '#75798c';
+    ? (engine.state.phase === 'down' ? exColor : 'var(--color-text)')
+    : 'var(--color-neutral-600)';
 
   const offset = useMemo(() => {
     if (!Number.isFinite(target) || target === 0) return RING_DASH;
@@ -287,9 +289,9 @@ export default function Session() {
       <div className="route-done flex-1 h-full flex flex-col items-center justify-center px-6 py-6.5 gap-4 text-center">
         <div
           className="w-[104px] h-[104px] rounded-full grid place-items-center"
-          style={{ background: 'var(--color-accent-900)', boxShadow: '0 0 0 12px rgba(145,132,217,.08)' }}
+          style={{ background: 'var(--color-accent-900)', boxShadow: `0 0 0 12px ${tint('var(--color-accent)', 8)}` }}
         >
-          <span className="text-[42px] text-accent leading-none">✓</span>
+          <Check size={46} strokeWidth={2.5} className="text-accent" aria-hidden />
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="text-[28px] font-medium tracking-[-0.02em]">{done.count} reps banked</div>
@@ -312,10 +314,10 @@ export default function Session() {
   return (
     <div
       className="route-session relative flex-1 h-full flex flex-col px-5 pt-3 pb-5.5 gap-3"
-      style={{ background: `radial-gradient(120% 60% at 50% 8%, ${EXERCISE_TINT_BG[exercise]}, #161826 70%)` }}
+      style={{ background: `radial-gradient(120% 60% at 50% 8%, ${EXERCISE_TINT_BG[exercise]}, var(--color-bg) 70%)` }}
     >
       <div className="flex items-center justify-between gap-2.5">
-        <Button variant="icon" onClick={() => navigate(-1)}><ChevronLeft size={18} /></Button>
+        <Button variant="icon" aria-label="Back" onClick={() => navigate(-1)}><ChevronLeft size={18} /></Button>
         <div className="flex items-center gap-2">
           <IconChip exercise={exercise} size={26}>{EXERCISE_ICON[exercise]}</IconChip>
           <div className="flex flex-col items-start gap-px">
@@ -335,20 +337,25 @@ export default function Session() {
           </div>
         </div>
         <span className="flex items-center gap-1.5">
-          <span
+          <button
+            type="button"
             onClick={() => setShowForm(true)}
-            style={{ background: 'rgba(233,233,237,.07)', color: '#75798c' }}
-            className="w-9 h-9 rounded-[10px] grid place-items-center cursor-pointer"
+            aria-label={`How to do ${EXERCISE_LABELS[exercise].toLowerCase()}`}
+            className="w-9 h-9 rounded-[10px] grid place-items-center cursor-pointer bg-text/7 text-neutral-500"
           >
             <PlayCircle size={16} />
-          </span>
-          <span
+          </button>
+          <button
+            type="button"
             onClick={() => setVoiceOn((v) => !v)}
-            style={{ background: voiceOn ? '#423a6a' : 'rgba(233,233,237,.07)', color: voiceOn ? '#d2cefd' : '#75798c' }}
-            className="w-9 h-9 rounded-[10px] grid place-items-center cursor-pointer"
+            aria-label="Voice count"
+            aria-pressed={voiceOn}
+            className={`w-9 h-9 rounded-[10px] grid place-items-center cursor-pointer transition-colors ${
+              voiceOn ? 'bg-accent-800 text-accent-300' : 'bg-text/7 text-neutral-500'
+            }`}
           >
-            <Mic size={16} />
-          </span>
+            {voiceOn ? <Mic size={16} /> : <MicOff size={16} />}
+          </button>
         </span>
       </div>
 
@@ -366,12 +373,12 @@ export default function Session() {
             />
             <div
               className="absolute inset-0"
-              style={{ background: `linear-gradient(180deg, rgba(22,24,38,.35) 0%, rgba(22,24,38,.55) 55%, #161826 96%)` }}
+              style={{ background: `linear-gradient(180deg, ${tint('var(--color-bg)', 35)} 0%, ${tint('var(--color-bg)', 55)} 55%, var(--color-bg) 96%)` }}
             />
             <div className="relative flex-1 flex flex-col items-center justify-end gap-3 px-6 pb-6 text-center">
               <div
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium tracking-[0.06em]"
-                style={{ background: 'rgba(22,24,38,.6)', color: exColor, boxShadow: `inset 0 0 0 1px ${exColor}55` }}
+                style={{ background: tint('var(--color-bg)', 60), color: exColor, boxShadow: `inset 0 0 0 1px ${tint(exColor, 33)}` }}
               >
                 <span className="text-[13px] leading-none">{EXERCISE_ICON[exercise]}</span>
                 {EXERCISE_LABELS[exercise].toUpperCase()}
@@ -391,14 +398,15 @@ export default function Session() {
                 style={{ borderColor: exColor, color: exColor }}
                 onClick={beginCountdown}
               >
-                {engine.state.count > 0 ? '▶  Resume' : '▶  Start'}
+                <Play size={15} fill="currentColor" aria-hidden />
+                {engine.state.count > 0 ? 'Resume' : 'Start'}
               </Button>
             </div>
           </div>
         )}
 
         {ready !== null && (
-          <div className="absolute inset-0 z-20 grid place-items-center rounded-[18px] overflow-hidden" style={{ background: 'rgba(22,24,38,.92)' }}>
+          <div className="absolute inset-0 z-20 grid place-items-center rounded-[18px] overflow-hidden" style={{ background: tint('var(--color-bg)', 92) }}>
             <div className="text-[96px] font-medium tabular-nums leading-none" style={{ color: exColor }}>
               {ready > 0 ? ready : 'GO'}
             </div>
@@ -406,7 +414,7 @@ export default function Session() {
         )}
 
         {!showLanding && counterVariant === 'bigNumeral' && (
-          <div onClick={engine.tapRep} className="flex flex-col items-center gap-0.5 cursor-pointer select-none">
+          <button type="button" aria-label="Count a rep" onClick={engine.tapRep} className="flex flex-col items-center gap-0.5 cursor-pointer select-none">
             <div className="text-[132px] leading-[.9] font-medium tracking-[-0.05em] tabular-nums">{engine.state.count}</div>
             <div className="text-xs tracking-[0.28em] text-neutral-500">REPS</div>
             <div
@@ -415,17 +423,17 @@ export default function Session() {
             >
               {cue}
             </div>
-          </div>
+          </button>
         )}
 
         {!showLanding && counterVariant === 'cadenceRing' && (
-          <div onClick={engine.tapRep} className="relative w-[250px] h-[250px] cursor-pointer select-none grid place-items-center">
+          <button type="button" aria-label="Count a rep" onClick={engine.tapRep} className="relative w-[250px] h-[250px] rounded-full cursor-pointer select-none grid place-items-center">
             <div
               className="absolute inset-[18px] rounded-full"
-              style={{ background: `radial-gradient(circle, ${exColor}33, transparent 70%)`, animation: `hpulse ${engine.state.tempo}s ease-in-out infinite` }}
+              style={{ background: `radial-gradient(circle, ${tint(exColor, 20)}, transparent 70%)`, animation: `hpulse ${engine.state.tempo}s ease-in-out infinite` }}
             />
             <svg viewBox="0 0 250 250" className="absolute inset-0 w-[250px] h-[250px] -rotate-90">
-              <circle cx="125" cy="125" r={RING_R} fill="none" stroke="rgba(233,233,237,.09)" strokeWidth="10" />
+              <circle cx="125" cy="125" r={RING_R} fill="none" stroke="color-mix(in srgb, var(--color-text) 9%, transparent)" strokeWidth="10" />
               <circle
                 cx="125" cy="125" r={RING_R} fill="none" stroke={exColor} strokeWidth="10" strokeLinecap="round"
                 strokeDasharray={RING_DASH} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset .3s' }}
@@ -441,16 +449,16 @@ export default function Session() {
                 {cue}
               </div>
             </div>
-          </div>
+          </button>
         )}
 
         {!showLanding && counterVariant === 'ladderLane' && (
-          <div onClick={engine.tapRep} className="flex items-center gap-5 cursor-pointer select-none">
+          <button type="button" aria-label="Count a rep" onClick={engine.tapRep} className="flex items-center gap-5 cursor-pointer select-none text-left">
             <div className="flex flex-col-reverse gap-1 h-[300px] justify-start">
               {Array.from({ length: 12 }, (_, i) => {
                 const h = 8 + Math.round(6 * Math.sin(i / 2));
                 const lit = i < engine.state.count;
-                return <span key={i} style={{ height: h, background: lit ? exColor : 'rgba(233,233,237,.10)' }} className="w-[52px] rounded block transition-colors" />;
+                return <span key={i} style={{ height: h, background: lit ? exColor : 'color-mix(in srgb, var(--color-text) 10%, transparent)' }} className="w-[52px] rounded block transition-colors" />;
               })}
             </div>
             <div className="flex flex-col gap-1">
@@ -463,23 +471,26 @@ export default function Session() {
                 {cue}
               </div>
             </div>
-          </div>
+          </button>
         )}
       </div>
 
       <TempoSlider tempo={engine.state.tempo} onChange={engine.setTempo} min={tempoRange.min} max={tempoRange.max} />
 
       <div className="flex items-center justify-center gap-4">
-        <Button variant="secondary" onClick={engine.decRep} className="!w-13 !h-13 !p-0 rounded-full text-xl">−</Button>
+        <Button variant="secondary" aria-label="One rep fewer" onClick={engine.decRep} className="!w-13 !h-13 !p-0 rounded-full"><Minus size={20} /></Button>
         <Button
           variant="primary"
           onClick={() => { if (!engine.state.running) beginCountdown(); else engine.toggleRun(); }}
-          className="!w-[78px] !h-[78px] !p-0 rounded-full text-2xl"
+          aria-label={engine.state.running ? 'Pause' : 'Start'}
+          className="!w-[78px] !h-[78px] !p-0 rounded-full"
           style={{ borderColor: exColor, color: exColor }}
         >
-          {engine.state.running ? '❚❚' : '▶'}
+          {engine.state.running
+            ? <Pause size={28} fill="currentColor" strokeWidth={0} />
+            : <Play size={28} fill="currentColor" strokeWidth={0} className="ml-1" />}
         </Button>
-        <Button variant="secondary" onClick={engine.tapRep} className="!w-13 !h-13 !p-0 rounded-full text-xl">+</Button>
+        <Button variant="secondary" aria-label="One more rep" onClick={engine.tapRep} className="!w-13 !h-13 !p-0 rounded-full"><Plus size={20} /></Button>
       </div>
 
       <ModeChip options={MODE_OPTIONS} value={mode} onChange={setMode} />
@@ -498,17 +509,7 @@ export default function Session() {
       )}
 
       {showForm && (
-        <div className="absolute inset-0 z-30 flex flex-col justify-end" style={{ background: 'rgba(11,12,20,.6)' }} onClick={() => setShowForm(false)}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-surface rounded-t-[20px] px-5 pt-4 pb-6 flex flex-col gap-3 max-h-[75%] overflow-y-auto"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-medium">{formRef.name} form</span>
-              <span onClick={() => setShowForm(false)} className="w-8 h-8 rounded-full grid place-items-center cursor-pointer text-neutral-400" style={{ background: 'rgba(233,233,237,.07)' }}>
-                <X size={15} />
-              </span>
-            </div>
+        <Sheet title={`${formRef.name} form`} onClose={() => setShowForm(false)} maxHeight="80%">
             <video
               key={formRef.video}
               src={formRef.video}
@@ -525,8 +526,7 @@ export default function Session() {
             <a href={formRef.source} target="_blank" rel="noreferrer" className="text-[11px] text-neutral-500 underline">
               Instructions: {formRef.sourceLabel}
             </a>
-          </div>
-        </div>
+        </Sheet>
       )}
     </div>
   );

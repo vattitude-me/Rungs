@@ -9,6 +9,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Rungs</title>
+    <!-- Put the saved colour theme on before the stylesheet paints anything.
+         Waiting for the app to boot would flash the default theme on every
+         launch. Mirrors storedTheme() in src/theme.ts. -->
+    <script>
+      try {
+        var t = localStorage.getItem('rungs.theme');
+        if (t && t !== 'violet' && /^[a-z]+$/.test(t)) document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

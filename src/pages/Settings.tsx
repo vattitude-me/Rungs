@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Mic, Timer, Vibrate, Bell, Lock, Info, ChevronDown, Clock, Minus, Plus, Gauge,
-  UserPlus, Users, Sparkles, Cloud, Camera, Watch, Trophy,
+  Sparkles, Cloud, Camera, Watch, Trophy,
 } from 'lucide-react';
 import Button from '../components/Button';
 import Toggle from '../components/Toggle';
 import ListRow from '../components/ListRow';
+import ModeChip from '../components/ModeChip';
+import ThemePicker from '../components/ThemePicker';
+import { applyTheme, isThemeId, DEFAULT_THEME, type ThemeId } from '../theme';
 import { getProfile, saveProfile, getSettings, saveSettings, getDayPlan } from '../db';
 import {
   isNative, requestNotificationPermission, hasNotificationPermission,
@@ -18,7 +21,7 @@ import { localDate, dayIndexFor, daysBetweenDates } from '../engine/dates';
 import { shouldRebaseline } from '../engine/coach';
 import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
-import type { Profile, AppSettings } from '../types';
+import type { Profile, AppSettings, CounterVariant, DashboardVariant } from '../types';
 
 type NotifState = 'granted' | 'denied' | 'unsupported';
 
@@ -40,14 +43,31 @@ function evenTimes(count: number): string[] {
   });
 }
 
+// Friends and Squad used to head this list; both have shipped.
 const UPCOMING_FEATURES = [
-  { icon: UserPlus, title: 'Friends', subtitle: 'Add friends, see their streaks' },
-  { icon: Users, title: 'Squad', subtitle: 'Group feed, leaderboards' },
   { icon: Sparkles, title: 'Motivational nudges', subtitle: 'Playful, max two a day' },
   { icon: Camera, title: 'Camera auto-count', subtitle: 'Pose detection counts reps for you' },
   { icon: Watch, title: 'Watch app', subtitle: 'Log sets from your wrist' },
   { icon: Trophy, title: 'Challenges', subtitle: 'Timed group challenges' },
 ] as const;
+
+const DASHBOARD_OPTIONS: { key: DashboardVariant; label: string }[] = [
+  { key: 'rings', label: 'Rings' },
+  { key: 'fuelBars', label: 'Bars' },
+];
+
+const COUNTER_OPTIONS: { key: CounterVariant; label: string }[] = [
+  { key: 'cadenceRing', label: 'Ring' },
+  { key: 'bigNumeral', label: 'Big number' },
+  { key: 'ladderLane', label: 'Ladder' },
+];
+
+/** Section label above a group of rows. */
+function SectionLabel({ children }: { children: string }) {
+  return <h2 className="text-[11px] font-normal tracking-[0.1em] text-neutral-500 px-0.5">{children}</h2>;
+}
+
+const CHEVRON = <span aria-hidden className="text-[13px] text-neutral-600">›</span>;
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -185,6 +205,15 @@ export default function Settings() {
     await saveSettings(next);
   };
 
+  const theme: ThemeId = isThemeId(settings.theme) ? settings.theme : DEFAULT_THEME;
+
+  const chooseTheme = (id: ThemeId) => {
+    // On screen first, saved second: the swatch should answer the tap in the
+    // same frame, not after an IndexedDB write.
+    applyTheme(id);
+    void updateSetting({ theme: id });
+  };
+
   const toggleReminders = async () => {
     const turningOn = !settings.reminders;
 
@@ -240,7 +269,9 @@ export default function Settings() {
           <span className="flex-1 flex items-center gap-2.5">
             <span className="flex-1 flex flex-col gap-px">
               <span className="text-[17px] font-medium">{profile.name}</span>
-              <span className="text-[11.5px] text-neutral-500">This phone only</span>
+              <span className="text-[11.5px] text-neutral-500 truncate">
+                {account ? (account.email ?? 'Synced') : 'This phone only'}
+              </span>
             </span>
             <Button
               variant="secondary" className="h-8.5 px-3.5 text-xs flex-none"
@@ -262,37 +293,15 @@ export default function Settings() {
               />
               <Button variant="primary" className="h-9.5 px-3.5 flex-none" onClick={saveName}>Save</Button>
             </span>
-            <span className="text-[11px] text-neutral-600">Stays on this phone. Used in greetings only.</span>
+            <span className="text-[11px] text-neutral-600">
+              {account ? 'Used in greetings, and shown to friends in your squad.' : 'Stays on this phone. Used in greetings only.'}
+            </span>
           </span>
-        )}
-      </div>
-
-      <div className="flex-none rounded-[14px] bg-surface shadow-sm overflow-hidden">
-        <button
-          onClick={() => setUpcomingOpen((v) => !v)}
-          className="w-full flex items-center gap-2.5 px-3.5 py-3 cursor-pointer text-left"
-        >
-          <span className="flex-1 flex flex-col gap-px">
-            <span className="text-[13.5px] font-medium">Upcoming features</span>
-            <span className="text-[11px] text-neutral-600">What's planned, not built yet</span>
-          </span>
-          <ChevronDown
-            size={15}
-            className="text-neutral-500 transition-transform duration-200"
-            style={{ transform: upcomingOpen ? 'rotate(180deg)' : 'none' }}
-          />
-        </button>
-        {upcomingOpen && (
-          <div className="border-t border-neutral-800/60">
-            {UPCOMING_FEATURES.map((f) => (
-              <ListRow key={f.title} icon={<f.icon size={14} />} title={f.title} subtitle={f.subtitle} />
-            ))}
-          </div>
         )}
       </div>
 
       <div className="flex flex-col gap-1.75">
-        <span className="text-[11px] tracking-[0.1em] text-neutral-500">STRENGTH</span>
+        <SectionLabel>STRENGTH</SectionLabel>
         <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
           <ListRow
             isFirst
@@ -303,7 +312,7 @@ export default function Settings() {
                 ? `Due now · last tested ${lastTestedLabel}`
                 : `${profile.maxes.push} push · ${profile.maxes.pull} pull · ${profile.maxes.squat} squat`
             }
-            trailing={<span className="text-[13px] text-neutral-600">›</span>}
+            trailing={CHEVRON}
             onClick={() => navigate('/settings/retest')}
           />
         </div>
@@ -327,7 +336,7 @@ export default function Settings() {
               aria-label="One less window"
               disabled={windowTimes.length <= MIN_WINDOWS}
               onClick={() => setWindowCount(windowTimes.length - 1)}
-              className="w-6.5 h-6.5 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
             >
               <Minus size={13} />
             </button>
@@ -336,7 +345,7 @@ export default function Settings() {
               aria-label="One more window"
               disabled={windowTimes.length >= MAX_WINDOWS}
               onClick={() => setWindowCount(windowTimes.length + 1)}
-              className="w-6.5 h-6.5 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
             >
               <Plus size={13} />
             </button>
@@ -350,7 +359,7 @@ export default function Settings() {
                 icon={<Clock size={14} />}
                 title={t}
                 subtitle={i === 0 ? 'First window of the day' : i === windowTimes.length - 1 ? 'Last chance to catch up' : 'Tap to change'}
-                trailing={<span className="text-[13px] text-neutral-600">›</span>}
+                trailing={CHEVRON}
                 onClick={() => { setEditingWindow(i); setWindowDraft(t); }}
               />
               {editingWindow === i && (
@@ -374,26 +383,58 @@ export default function Settings() {
         </span>
       </div>
 
+      <section className="flex flex-col gap-1.75">
+        <SectionLabel>APPEARANCE</SectionLabel>
+        <div className="rounded-[14px] bg-surface shadow-sm px-3.5 py-3.5 flex flex-col gap-4">
+          <div className="flex flex-col gap-2.5">
+            <span className="text-[13.5px]">Colour theme</span>
+            <ThemePicker value={theme} onChange={chooseTheme} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <span className="flex flex-col gap-px">
+              <span className="text-[13.5px]">Home dashboard</span>
+              <span className="text-[11px] text-neutral-600">How today's progress is drawn</span>
+            </span>
+            <ModeChip
+              options={DASHBOARD_OPTIONS}
+              value={settings.dashboardVariant}
+              onChange={(dashboardVariant) => void updateSetting({ dashboardVariant })}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <span className="flex flex-col gap-px">
+              <span className="text-[13.5px]">Rep counter</span>
+              <span className="text-[11px] text-neutral-600">What fills the screen during a set</span>
+            </span>
+            <ModeChip
+              options={COUNTER_OPTIONS}
+              value={settings.counterVariant}
+              onChange={(counterVariant) => void updateSetting({ counterVariant })}
+            />
+          </div>
+        </div>
+      </section>
+
       <div className="flex flex-col gap-1.75">
-        <span className="text-[11px] tracking-[0.1em] text-neutral-500">COUNTER</span>
+        <SectionLabel>COUNTER</SectionLabel>
         <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
           <ListRow
             isFirst icon={<Mic size={14} />} title="Voice count" subtitle="Says every rep out loud"
-            trailing={<Toggle size="dense" on={settings.voice} onToggle={() => updateSetting({ voice: !settings.voice })} />}
+            trailing={<Toggle size="dense" label="Voice count" on={settings.voice} onToggle={() => updateSetting({ voice: !settings.voice })} />}
           />
           <ListRow
             icon={<Timer size={14} />} title="Metronome ticks" subtitle="Down / up cue tones"
-            trailing={<Toggle size="dense" on={settings.ticks} onToggle={() => updateSetting({ ticks: !settings.ticks })} />}
+            trailing={<Toggle size="dense" label="Metronome ticks" on={settings.ticks} onToggle={() => updateSetting({ ticks: !settings.ticks })} />}
           />
           <ListRow
             icon={<Vibrate size={14} />} title="Haptics" subtitle="A pulse per rep"
-            trailing={<Toggle size="dense" on={settings.haptics} onToggle={() => updateSetting({ haptics: !settings.haptics })} />}
+            trailing={<Toggle size="dense" label="Haptics" on={settings.haptics} onToggle={() => updateSetting({ haptics: !settings.haptics })} />}
           />
         </div>
       </div>
 
       <div className="flex flex-col gap-1.75">
-        <span className="text-[11px] tracking-[0.1em] text-neutral-500">REMINDERS</span>
+        <SectionLabel>REMINDERS</SectionLabel>
         <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
           <ListRow
             isFirst icon={<Bell size={14} />} title="Window reminders"
@@ -424,17 +465,49 @@ export default function Settings() {
             trailing={
               <Toggle
                 size="dense"
+                label="Window reminders"
                 on={settings.reminders && notifPermission === 'granted'}
                 onToggle={toggleReminders}
               />
             }
           />
-          {cloudConfigured && (
-            <ListRow icon={<Cloud size={14} />} title="Account & sync" subtitle="Backs up as you go, restores on a new device" trailing={<span className="text-[13px] text-neutral-600">›</span>} onClick={() => navigate('/settings/sync')} />
-          )}
-          <ListRow icon={<Lock size={14} />} title="Data & privacy" subtitle={cloudConfigured ? 'What\u2019s stored, and where' : 'On-device only, nothing shared'} trailing={<span className="text-[13px] text-neutral-600">›</span>} onClick={() => navigate('/settings/privacy')} />
-          <ListRow icon={<Info size={14} />} title="About Rungs" subtitle={`v${__APP_VERSION__} · free forever`} trailing={<span className="text-[13px] text-neutral-600">›</span>} />
         </div>
+      </div>
+
+      <section className="flex flex-col gap-1.75">
+        <SectionLabel>ACCOUNT & ABOUT</SectionLabel>
+        <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
+          {cloudConfigured && (
+            <ListRow isFirst icon={<Cloud size={14} />} title="Account & sync" subtitle={account ? 'Backing up as you go' : 'Back up and restore on a new device'} trailing={CHEVRON} onClick={() => navigate('/settings/sync')} />
+          )}
+          <ListRow isFirst={!cloudConfigured} icon={<Lock size={14} />} title="Data & privacy" subtitle={cloudConfigured ? 'What\u2019s stored, and where' : 'On-device only, nothing shared'} trailing={CHEVRON} onClick={() => navigate('/settings/privacy')} />
+          <ListRow icon={<Info size={14} />} title="About Rungs" subtitle={`Version ${__APP_VERSION__}`} />
+        </div>
+      </section>
+
+      <div className="flex-none rounded-[14px] bg-surface shadow-sm overflow-hidden">
+        <button
+          onClick={() => setUpcomingOpen((v) => !v)}
+          aria-expanded={upcomingOpen}
+          className="w-full flex items-center gap-2.5 px-3.5 py-3 cursor-pointer text-left"
+        >
+          <span className="flex-1 flex flex-col gap-px">
+            <span className="text-[13.5px] font-medium">Upcoming features</span>
+            <span className="text-[11px] text-neutral-600">What's planned, not built yet</span>
+          </span>
+          <ChevronDown
+            size={15}
+            className="text-neutral-500 transition-transform duration-200"
+            style={{ transform: upcomingOpen ? 'rotate(180deg)' : 'none' }}
+          />
+        </button>
+        {upcomingOpen && (
+          <div className="border-t border-neutral-800/60">
+            {UPCOMING_FEATURES.map((f) => (
+              <ListRow key={f.title} icon={<f.icon size={14} />} title={f.title} subtitle={f.subtitle} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="text-[11.5px] leading-[1.5] text-neutral-600 text-center pt-1">

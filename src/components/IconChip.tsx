@@ -10,7 +10,7 @@ interface IconChipProps {
 }
 
 export default function IconChip({ children, exercise, bg, size = 38 }: IconChipProps) {
-  const background = bg ?? (exercise ? EXERCISE_CHIP_BG[exercise] : '#3f424d');
+  const background = bg ?? (exercise ? EXERCISE_CHIP_BG[exercise] : 'var(--color-neutral-800)');
   return (
     <span
       style={{ width: size, height: size, background }}

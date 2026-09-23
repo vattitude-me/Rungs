@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, Bell } from 'lucide-react';
 import Button from '../../components/Button';
 import IconChip from '../../components/IconChip';
+import { tint } from '../../theme';
 import Toggle from '../../components/Toggle';
 import { getBaselineLogs, saveProfile, getSettings, saveSettings } from '../../db';
 import { computeTierTargets } from '../../engine/coach';
@@ -116,7 +117,7 @@ export default function PlanPreview() {
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-action gap-4">
       <div className="flex items-center gap-3">
-        <Button variant="icon" onClick={() => navigate('/onboarding/schedule', { state })}>
+        <Button variant="icon" aria-label="Back" onClick={() => navigate('/onboarding/schedule', { state })}>
           <ChevronLeft size={18} />
         </Button>
         <div className="flex-1 h-[3px] rounded-full bg-text/12 overflow-hidden">
@@ -140,7 +141,7 @@ export default function PlanPreview() {
           app in one row - where you start, and what "done" actually looks like. */}
       <div
         className="p-4 rounded-[14px] shadow-sm flex flex-col gap-3"
-        style={{ background: 'linear-gradient(150deg, #1d2033, #161826)' }}
+        style={{ background: 'linear-gradient(150deg, var(--color-lit-from), var(--color-lit-to))' }}
       >
         <div className="text-[10px] tracking-[0.12em] text-accent">THE LADDER</div>
         <div className="flex items-stretch gap-2">
@@ -151,13 +152,13 @@ export default function PlanPreview() {
                 key={t}
                 className="flex-1 flex flex-col gap-1.5 px-2.5 py-3 rounded-[11px]"
                 style={{
-                  background: active ? 'rgba(145,132,217,.18)' : 'rgba(233,233,237,.04)',
-                  boxShadow: active ? 'inset 0 0 0 1px rgba(145,132,217,.5)' : 'none',
+                  background: active ? tint('var(--color-accent)', 18) : tint('var(--color-text)', 4),
+                  boxShadow: active ? `inset 0 0 0 1px ${tint('var(--color-accent)', 50)}` : 'none',
                 }}
               >
                 <span
                   className="text-[22px] font-medium tabular-nums leading-none"
-                  style={{ color: active ? '#d2cefd' : '#75798c' }}
+                  style={{ color: active ? 'var(--color-accent-300)' : 'var(--color-neutral-600)' }}
                 >
                   {t}
                 </span>
@@ -200,7 +201,7 @@ export default function PlanPreview() {
             <span className="text-[13.5px] font-medium">Window reminders</span>
             <span className="text-[11.5px] text-neutral-500">A nudge a few minutes before each window.</span>
           </span>
-          <Toggle on={remindersOn} onToggle={() => setRemindersOn((r) => !r)} />
+          <Toggle label="Window reminders" on={remindersOn} onToggle={() => setRemindersOn((r) => !r)} />
         </div>
       )}
 

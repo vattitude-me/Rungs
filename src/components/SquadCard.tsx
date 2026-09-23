@@ -5,6 +5,7 @@ import { getProfile } from '../db';
 import { useCloudSync } from '../hooks/useCloudSync';
 import { useFriends } from '../hooks/useFriends';
 import { cloudConfigured } from '../cloud/config';
+import Avatar from './Avatar';
 
 /** Today's standings, on the home screen.
  *
@@ -22,18 +23,6 @@ import { cloudConfigured } from '../cloud/config';
 /** How many rows fit before the card starts competing with the day's plan.
  * Enough to show a podium and where the user sits against it. */
 const VISIBLE_ROWS = 4;
-
-const CHIP_COLORS = ['#423a6a', '#3f424d', '#2b2741', '#453055', '#2f3a52', '#4a3b3b'];
-
-function chipColor(uid: string): string {
-  let hash = 0;
-  for (let i = 0; i < uid.length; i++) hash = (hash * 31 + uid.charCodeAt(i)) >>> 0;
-  return CHIP_COLORS[hash % CHIP_COLORS.length];
-}
-
-function initial(name: string): string {
-  return (name.trim()[0] ?? '?').toUpperCase();
-}
 
 function formatReps(n: number): string {
   return n.toLocaleString();
@@ -114,9 +103,9 @@ export default function SquadCard({ myReps }: { myReps: number }) {
         <span className="text-[11px] tracking-[0.1em] text-neutral-500">SQUAD TODAY</span>
         <button
           onClick={() => navigate('/squad')}
-          className="text-[11.5px] text-neutral-500 cursor-pointer"
+          className="min-h-8 px-1 -mr-1 text-[11.5px] text-neutral-500 cursor-pointer"
         >
-          All ›
+          See all ›
         </button>
       </div>
 
@@ -131,12 +120,7 @@ export default function SquadCard({ myReps }: { myReps: number }) {
               <span className="w-4 flex-none text-[11px] tabular-nums text-neutral-600 text-right">
                 {rank}
               </span>
-              <span
-                style={{ background: s.isMe ? '#5d5294' : chipColor(s.uid) }}
-                className="w-7 h-7 flex-none rounded-full grid place-items-center text-[11.5px] font-medium"
-              >
-                {s.isMe ? '·' : initial(s.name)}
-              </span>
+              <Avatar uid={s.uid} name={s.name} size={28} isMe={s.isMe} />
               <span className={`flex-1 text-[12.5px] truncate ${s.isMe ? 'font-medium' : 'text-neutral-300'}`}>
                 {s.name}
               </span>
@@ -146,8 +130,9 @@ export default function SquadCard({ myReps }: { myReps: number }) {
                 </span>
               )}
               <span
-                className="text-[12.5px] font-medium tabular-nums flex-none w-11 text-right"
-                style={{ color: s.percent >= 100 ? '#7fd6a2' : s.isMe ? '#d2cefd' : '#9ca0b0' }}
+                className={`text-[12.5px] font-medium tabular-nums flex-none w-11 text-right ${
+                  s.percent >= 100 ? 'text-success' : s.isMe ? 'text-accent-300' : 'text-neutral-500'
+                }`}
               >
                 {formatReps(s.todayReps)}
               </span>
