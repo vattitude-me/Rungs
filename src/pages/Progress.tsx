@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import StatCard from '../components/StatCard';
 import IconChip from '../components/IconChip';
-import { getStreak, getAllDayRecords, getAllSetLogs } from '../db';
+import { getStreak, getAllDayRecords, getAllSetLogs, getProfile } from '../db';
+import { totalsForLogs, formatKcal, formatMoved } from '../engine/energy';
+import { movementById, CLASSIC } from '../data/movements';
+import { useNavigate } from 'react-router-dom';
 import { localDate } from '../engine/dates';
-import type { StreakData, DayRecord, SetLog, Exercise } from '../types';
-import { EXERCISE_LABELS, EXERCISE_COLOR, EXERCISE_CHIP_BG, EXERCISE_ICON } from '../types';
+import type { StreakData, DayRecord, SetLog, Exercise, Profile } from '../types';
+import { SLOT_LABELS, EXERCISE_COLOR, EXERCISE_CHIP_BG, EXERCISE_ICON } from '../types';
 
 const EXERCISES: Exercise[] = ['push', 'pull', 'squat'];
 
@@ -56,7 +59,12 @@ export default function Progress() {
   const [totalReps, setTotalReps] = useState(0);
   const [week, setWeek] = useState<ChartDay[]>([]);
   const [month, setMonth] = useState<ChartDay[]>([]);
-  const [bests, setBests] = useState<Record<Exercise, number>>({ push: 0, pull: 0, squat: 0 });
+  const [bests, setBests] = useState<Record<Exercise, { reps: number; move: string }>>({
+    push: { reps: 0, move: '' }, pull: { reps: 0, move: '' }, squat: { reps: 0, move: '' },
+  });
+  const [logs, setLogs] = useState<SetLog[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     getStreak().then(setStreak);
@@ -70,9 +78,18 @@ export default function Progress() {
       setMonth(lastDays(28, byDate));
     });
 
-    getAllSetLogs().then((logs: SetLog[]) => {
-      const best: Record<Exercise, number> = { push: 0, pull: 0, squat: 0 };
-      for (const log of logs) best[log.exercise] = Math.max(best[log.exercise], log.reps);
+    getProfile().then((p) => setProfile(p ?? null));
+    getAllSetLogs().then((all: SetLog[]) => {
+      setLogs(all);
+      const best: Record<Exercise, { reps: number; move: string }> = {
+        push: { reps: 0, move: '' }, pull: { reps: 0, move: '' }, squat: { reps: 0, move: '' },
+      };
+      for (const log of all) {
+        if (log.reps > best[log.exercise].reps) {
+          const m = movementById(log.variation) ?? movementById(CLASSIC[log.exercise]);
+          best[log.exercise] = { reps: log.reps, move: m?.name ?? '' };
+        }
+      }
       setBests(best);
     });
   }, []);
@@ -84,6 +101,11 @@ export default function Progress() {
     ? Math.round((100 * monthRecords.filter((r) => r?.streakCredit).length) / monthRecords.filter(Boolean).length || 0)
     : 0;
   const todayKey = localDate();
+  const weekStart = week[0] ? localDate(week[0].date) : todayKey;
+  const weekLogs = logs.filter((l) => l.date >= weekStart && l.source !== 'baseline');
+  const energyWeek = profile?.weightKg ? totalsForLogs(weekLogs, profile.weightKg) : null;
+  const energyAll = profile?.weightKg ? totalsForLogs(logs.filter((l) => l.source !== 'baseline'), profile.weightKg) : null;
+  const units = profile?.units ?? 'metric';
 
   return (
     <div className="flex-1 h-full overflow-y-auto flex flex-col px-5 pt-4 pb-24 gap-3.75">
@@ -101,6 +123,25 @@ export default function Progress() {
         <StatCard kicker="TOTAL REPS" kickerAccent={false} value={totalReps.toLocaleString()} caption="since start" />
       </div>
 
+      {energyWeek && energyAll ? (
+        <div className="flex gap-2.5 items-stretch">
+          <StatCard kicker="BURNED THIS WEEK" kickerAccent={false} value={<span className="text-[26px]">{formatKcal(energyWeek.kcal)}</span>} caption="estimate" />
+          <StatCard kicker="LIFTED IN TOTAL" kickerAccent={false} value={<span className="text-[26px]">{formatMoved(energyAll.kgMoved, units)}</span>} caption="bodyweight moved" />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => navigate('/settings/workout')}
+          className="flex items-center gap-3 p-3.5 rounded-[15px] bg-surface shadow-sm text-left cursor-pointer"
+        >
+          <span className="flex-1 flex flex-col gap-0.5">
+            <span className="text-[13.5px] font-medium">See calories and weight lifted</span>
+            <span className="text-[11.5px] text-neutral-500">Add your weight and we'll estimate both from every set.</span>
+          </span>
+          <span className="text-neutral-600">›</span>
+        </button>
+      )}
+
       <div className="p-[15px] rounded-[15px] bg-surface shadow-sm flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span className="text-[13px] font-medium">This week</span>
@@ -108,7 +149,7 @@ export default function Progress() {
             {EXERCISES.map((ex) => (
               <span key={ex} className="flex items-center gap-1">
                 <i className="w-2 h-2 rounded-sm block" style={{ background: EXERCISE_COLOR[ex] }} />
-                {ex[0].toUpperCase() + ex.slice(1)}
+                {SLOT_LABELS[ex]}
               </span>
             ))}
           </div>
@@ -178,8 +219,11 @@ export default function Progress() {
         {EXERCISES.map((ex) => (
           <div key={ex} className="flex items-center gap-2.75 px-3.25 py-3 rounded-xl bg-surface">
             <IconChip bg={EXERCISE_CHIP_BG[ex]} size={30}>{EXERCISE_ICON[ex]}</IconChip>
-            <span className="flex-1 text-[13.5px]">Best {EXERCISE_LABELS[ex].toLowerCase().replace(/s$/, '')} set</span>
-            <span className="text-sm font-medium tabular-nums">{bests[ex]}</span>
+            <span className="flex-1 flex flex-col gap-px">
+              <span className="text-[13.5px]">Best {SLOT_LABELS[ex].toLowerCase()} set</span>
+              {bests[ex].move && <span className="text-[11px] text-neutral-500">{bests[ex].move}</span>}
+            </span>
+            <span className="text-sm font-medium tabular-nums">{bests[ex].reps}</span>
           </div>
         ))}
       </div>

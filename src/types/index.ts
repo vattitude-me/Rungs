@@ -15,6 +15,25 @@ export type DashboardVariant = 'rings' | 'fuelBars';
 export type SetModel = 'ladder' | 'percent';
 export type WindowStatus = 'pending' | 'done' | 'missed' | 'reflowed';
 
+/** Kit the user has to hand. Nothing at all is the default - every slot has
+ * a movement that needs no equipment - so this only ever widens the choice. */
+export type Equipment = 'bar' | 'dumbbell' | 'band';
+
+/** How the day's reps are laid out in time.
+ * - spread: a few short windows at times the user picks (the original model)
+ * - single: one session, sets and rests run back to back
+ * - surprise: the same number of windows, at times drawn fresh each day */
+export type DayStyle = 'spread' | 'single' | 'surprise';
+
+/** Which part of the body gets the bigger share of the daily total. */
+export type Focus = 'balanced' | 'upper' | 'lower';
+
+/** The self-assessed starting point picked in onboarding, used to estimate
+ * maxes until the user tests real ones. */
+export type FitnessLevel = 'new' | 'returning' | 'active' | 'strong';
+
+export type Units = 'metric' | 'imperial';
+
 /** Sync bookkeeping carried by every row that backs up.
  *
  * `updatedAt` is the whole of the merge rule: when two devices hold the same
@@ -68,6 +87,28 @@ export interface Profile extends Synced {
   tier: Tier;
   /** Date the user reached the current tier, used to gate promotion. */
   tierStartedAt: string; // YYYY-MM-DD
+
+  // Everything below arrived with movement choice and the fast onboarding.
+  // All optional, so profiles written before it still load and sync; the
+  // readers in data/movements.ts and engine/schedule.ts supply the defaults.
+
+  /** The movement picked for each slot, by id from data/movements.ts. A
+   * missing slot means "whatever suits my level and kit". */
+  variations?: Partial<Record<Exercise, string>>;
+  equipment?: Equipment[];
+  dayStyle?: DayStyle;
+  focus?: Focus;
+  level?: FitnessLevel;
+  /** True while `maxes` are the estimate from the level picker rather than
+   * numbers the user tested or typed. Cleared by a retest. */
+  maxesEstimated?: boolean;
+  weightKg?: number;
+  heightCm?: number;
+  units?: Units;
+  /** When the next-day check-in (name, body, real numbers) was answered. */
+  checkInDoneAt?: string; // YYYY-MM-DD
+  /** A "not now" on the check-in hides it for the rest of that day only. */
+  checkInSnoozedOn?: string; // YYYY-MM-DD
 }
 
 export interface BaselineLog extends Synced {
@@ -111,6 +152,9 @@ export interface SetLog extends Synced {
   tempo: number;
   mode: CounterMode;
   windowId?: string;
+  /** Movement id the set was done as (data/movements.ts). Absent on sets
+   * logged before movement choice existed, which were the slot's classic. */
+  variation?: string;
   source: 'session' | 'manual' | 'baseline';
   completedAt: number;
 }
@@ -155,10 +199,19 @@ export const TEMPO_RANGE: Record<Exercise, { min: number; max: number; default: 
   squat: { min: 1, max: 4, default: 2 },
 };
 
+/** The classic movement for each slot. Where the user's chosen movement is
+ * known, show `movementFor(...)` from data/movements.ts instead. */
 export const EXERCISE_LABELS: Record<Exercise, string> = {
   push: 'Push-ups',
   pull: 'Pull-ups',
   squat: 'Squats',
+};
+
+/** The slot itself - what a day is made of, whatever movement fills it. */
+export const SLOT_LABELS: Record<Exercise, string> = {
+  push: 'Push',
+  pull: 'Pull',
+  squat: 'Legs',
 };
 
 /** Per-exercise visual identity, shared across Today/Progress/Session so the

@@ -249,7 +249,7 @@ export default function Sync() {
               ) : hasProfile === false ? (
                 <Button
                   variant="primary" block className="h-12 text-[15px]"
-                  onClick={() => navigate('/onboarding/name', { replace: true })}
+                  onClick={() => navigate('/onboarding/level', { replace: true })}
                 >
                   <span className="inline-flex items-center gap-2">
                     Set up my plan

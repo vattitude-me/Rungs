@@ -1,14 +1,20 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import Button from '../components/Button';
 import IconChip from '../components/IconChip';
-import type { Exercise } from '../types';
-import { EXERCISE_LABELS, EXERCISE_ICON, EXERCISE_COLOR } from '../types';
+import { getProfile } from '../db';
+import { movementFor, movementById, CLASSIC } from '../data/movements';
+import type { Exercise, Profile } from '../types';
+import { SLOT_LABELS, EXERCISE_ICON, EXERCISE_COLOR } from '../types';
 
 const EXERCISES: Exercise[] = ['push', 'pull', 'squat'];
 
 export default function LogReps() {
   const navigate = useNavigate();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  useEffect(() => { getProfile().then((p) => setProfile(p ?? null)); }, []);
+  const nameFor = (ex: Exercise) => (profile ? movementFor(profile, ex) : movementById(CLASSIC[ex])!).name;
 
   return (
     <div className="route-forward h-full overflow-y-auto flex flex-col px-5.5 pt-4 pb-6 gap-4">
@@ -35,8 +41,8 @@ export default function LogReps() {
               <span className="text-[17px]">{EXERCISE_ICON[ex]}</span>
             </IconChip>
             <span className="flex-1 flex flex-col gap-px">
-              <span className="text-[15px] font-medium">{EXERCISE_LABELS[ex]}</span>
-              <span className="text-[11.5px] text-neutral-500">Count up, bank whenever you stop</span>
+              <span className="text-[15px] font-medium">{nameFor(ex)}</span>
+              <span className="text-[11.5px] text-neutral-500">{SLOT_LABELS[ex]} · count up, bank whenever you stop</span>
             </span>
             <span className="text-[13px]" style={{ color: EXERCISE_COLOR[ex] }}>›</span>
           </button>

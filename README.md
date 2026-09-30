@@ -4,25 +4,40 @@ A hundred a day, one rung at a time.
 
 [rungs.vattitude.ca](https://rungs.vattitude.ca)
 
-Push-ups, pull-ups and squats, 100 reps a day to start. The split matches your
-current strength, so if your pull-ups are weak you'll do fewer of those and
-more of the rest. As you get stronger the daily total climbs: 100, then 200,
-then 300, which is a hundred of each. No gym, no equipment.
+Strength training in short sets you fit around your day. Push, pull and legs,
+100 reps a day to start, climbing to 200 and then 300 as you get stronger.
+No gym, no equipment needed.
 
 ## How it works
 
-The day's reps are cut into short windows instead of one long session. A set
-takes a couple of minutes, and you fit them in between everything else.
+Pick where you're starting and what kit you have, if any, and you get a plan
+in under a minute. No test needed on day one. The day after, a quick check-in
+asks for your name, your weight (for calorie estimates) and, if you want, a
+real max test.
 
-You set your starting point with a quick baseline test. Retest whenever you
-want and the plan reshapes around your new numbers.
+**Your moves.** Each slot (push, pull, legs) can be any of 30 movements, from
+wall push-ups to pistol squats, plus dumbbell and band options if you have
+them. Tap a move on Home or during a set to swap it. Reps count the same
+whichever you pick. For the full write-up on any move, Rungs links to
+Wikipedia.
 
-During a session, voice cues and rest timers run the clock so you don't have
-to watch the screen.
+**Your day.** Choose how the reps land:
 
-Streaks, personal records and your full history are on the Progress tab.
+- *Little and often*: a few short sets at times you pick
+- *One session*: everything in one go
+- *Surprise me*: sets arrive at random times each day. Be ready.
 
-Add friends to your squad and you can see each other's streaks.
+A focus setting tilts the split toward upper body or legs.
+
+**While you train**, voice cues and rest timers run the clock so you don't
+have to watch the screen. After each set you see the reps banked, calories
+burned and total weight lifted (both are estimates).
+
+**Progress** shows streaks, personal records, your history and weekly
+calories.
+
+**Squad.** Add friends to see each other's streaks and nudge each other.
+Share your day in one tap.
 
 Everything works offline and is stored on your device. Sign in and it syncs to
 your other phones, tablets and browsers.

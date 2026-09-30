@@ -1,4 +1,4 @@
-import type { Exercise, Window, WindowItem, PullRung, SetModel, StreakData, Tier, DayRecord } from '../types';
+import type { Exercise, Window, WindowItem, PullRung, SetModel, StreakData, Tier, DayRecord, Focus } from '../types';
 import { daysBetweenDates } from './dates';
 
 const EXERCISES: Exercise[] = ['push', 'pull', 'squat'];
@@ -23,20 +23,32 @@ const MIN_SHARE = 0.08;
  * instead of splitting three ways evenly. */
 const NO_SIGNAL_WEIGHTS: Record<Exercise, number> = { push: 1.2, pull: 0.6, squat: 2 };
 
+/** How a focus tilts the strength-weighted split. Applied before the blend
+ * toward even, so it fades out as the tier climbs - tier 300 is 100 of each
+ * whatever the focus, because that's what finishing means. */
+const FOCUS_BIAS: Record<Focus, Record<Exercise, number>> = {
+  balanced: { push: 1, pull: 1, squat: 1 },
+  upper: { push: 1.35, pull: 1.35, squat: 0.6 },
+  lower: { push: 0.75, pull: 0.75, squat: 1.6 },
+};
+
 /** Per-exercise share weights, from each max relative to the total. Blended
  * toward an even 1/3 split as the tier climbs, since tier 300 is by
  * definition an even 100/100/100. */
 export function computeShares(
   maxes: Record<Exercise, number>,
-  tier: Tier
+  tier: Tier,
+  focus: Focus = 'balanced'
 ): Record<Exercise, number> {
   const rawMaxes = EXERCISES.map((ex) => Math.max(0, maxes[ex] ?? 0));
   const hasSignal = rawMaxes.some((m) => m > 0);
   // With no real numbers to weight by, fall back to relative difficulty
   // rather than treating "0/0/0" the same as "any three equal maxes."
-  const weights = hasSignal
+  const bias = FOCUS_BIAS[focus] ?? FOCUS_BIAS.balanced;
+  const weights = (hasSignal
     ? rawMaxes
-    : EXERCISES.map((ex) => NO_SIGNAL_WEIGHTS[ex]);
+    : EXERCISES.map((ex) => NO_SIGNAL_WEIGHTS[ex])
+  ).map((w, i) => w * bias[EXERCISES[i]]);
   const totalWeight = weights.reduce((a, b) => a + b, 0);
 
   // 0 at tier 100 (fully strength-weighted) → 1 at tier 300 (fully even).
@@ -62,9 +74,10 @@ const PER_EXERCISE_CAP = 100;
  * strength. Rounds so the parts always sum to exactly the tier total. */
 export function computeTierTargets(
   maxes: Record<Exercise, number>,
-  tier: Tier
+  tier: Tier,
+  focus: Focus = 'balanced'
 ): Record<Exercise, number> {
-  const shares = computeShares(maxes, tier);
+  const shares = computeShares(maxes, tier, focus);
   const targets: Record<Exercise, number> = { push: 0, pull: 0, squat: 0 };
 
   let assigned = 0;

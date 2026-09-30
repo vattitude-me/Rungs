@@ -22,7 +22,8 @@ ship; this is a reference for prioritizing work, not a spec.
   list, no backend.
 - Nudges: a friend pokes you if you're behind (capped at 2/day per the
   preview copy) - not implemented.
-- Leaderboards, group challenges.
+- Leaderboards, group challenges. Next up: squad goals (a shared weekly
+  target) and shared windows ("12:30 squad set").
 - Depends on accounts/sync shipping first.
 
 ## Notifications & engagement
@@ -39,11 +40,20 @@ ship; this is a reference for prioritizing work, not a spec.
 - Camera auto-count: pose detection counts reps hands-free. Documented
   as a v-later flag (`counter.camera`) in the design handoff notes but
   no implementation exists.
-- Additional exercises beyond push/pull/squat (the whole data model,
-  plan generator, and UI are hardcoded to these three).
+- Shipped in 2.0: movement choice per slot (src/data/movements.ts), day
+  styles (spread / single / surprise, src/engine/schedule.ts), focus,
+  calorie and weight-lifted estimates (src/engine/energy.ts). Still to do:
+  a fourth "core" slot (needs `Exercise` widened, which touches sync,
+  DayRecord and the squad), and demo footage for the non-classic moves.
 - Rest-timer customization beyond the fixed 45s between sets.
 - Editing/deleting a logged set after the fact (append-only ledger by
   design, but there's no UI to correct a fat-fingered rep count).
+
+## Growth
+
+- Share-your-day card as an image rather than text.
+- Invite link on the session done screen that deep-links into Squad.
+- Health Connect / Apple Health export of calories.
 
 ## Platform
 

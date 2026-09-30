@@ -94,6 +94,56 @@ function windowItems(targets, windowCount, index) {
   return items;
 }
 
+/** Surprise-style days draw fresh times per date. Mirrors surpriseTimes in
+ * src/engine/schedule.ts exactly - same seed, same PRNG, same bounds - so the
+ * nudge the server sends lands on the window the app is showing. */
+const SURPRISE_START = 9 * 60;
+const SURPRISE_END = 20 * 60 + 30;
+const SURPRISE_MIN_GAP = 75;
+
+function seeded(seed) {
+  let h = 1779033703;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function surpriseTimes(date, count) {
+  const rand = seeded(`rungs-${date}`);
+  const slice = (SURPRISE_END - SURPRISE_START) / count;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const lo = SURPRISE_START + slice * i;
+    let t = Math.round((lo + rand() * slice * 0.8) / 5) * 5;
+    if (out.length && t - out[out.length - 1] < SURPRISE_MIN_GAP) t = out[out.length - 1] + SURPRISE_MIN_GAP;
+    out.push(Math.min(t, SURPRISE_END));
+  }
+  return out.map((m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+}
+
+/** The day's window times under the profile's day style. Mirrors
+ * timesForDate in src/engine/schedule.ts. */
+function timesFor(profile, date) {
+  const saved = Array.isArray(profile.windowTimes) && profile.windowTimes.length
+    ? [...profile.windowTimes].sort((a, b) => a.localeCompare(b))
+    : null;
+  if (profile.dayStyle === 'single') return [saved ? saved[0] : '18:30'];
+  if (profile.dayStyle === 'surprise') {
+    const count = Math.min(6, Math.max(2, profile.windowCount || 3));
+    return surpriseTimes(date, count);
+  }
+  if (saved) return saved;
+  return evenTimes(profile.windowCount || 4, profile.wake || '06:30', profile.sleep || '23:00');
+}
+
 /** Minutes since midnight, in the given IANA timezone. */
 function localMinutes(now, timeZone) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -118,16 +168,11 @@ function dueWindow(profile, now) {
   const timeZone = profile.timeZone;
   if (!timeZone) return null;
 
-  let times = Array.isArray(profile.windowTimes) ? [...profile.windowTimes] : null;
-  if (!times || times.length === 0) {
-    const count = profile.windowCount || 4;
-    times = evenTimes(count, profile.wake || '06:30', profile.sleep || '23:00');
-  }
-  times.sort((a, b) => a.localeCompare(b));
-
   let nowMinutes;
+  let times;
   try {
     nowMinutes = localMinutes(now, timeZone);
+    times = timesFor(profile, localDate(now, timeZone));
   } catch {
     // An unrecognised timezone would otherwise throw on every tick forever.
     return null;
@@ -151,12 +196,12 @@ function dueWindow(profile, now) {
  * names reps the user is actually going to be asked for. */
 function forcedWindow(profile, now) {
   const timeZone = profile.timeZone || 'UTC';
-  let times = Array.isArray(profile.windowTimes) ? [...profile.windowTimes] : null;
-  if (!times || times.length === 0) {
-    const count = profile.windowCount || 4;
-    times = evenTimes(count, profile.wake || '06:30', profile.sleep || '23:00');
+  let times;
+  try {
+    times = timesFor(profile, localDate(now, timeZone));
+  } catch {
+    times = timesFor(profile, localDate(now, 'UTC'));
   }
-  times.sort((a, b) => a.localeCompare(b));
   if (times.length === 0) return null;
 
   let nowMinutes;

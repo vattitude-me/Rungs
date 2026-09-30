@@ -2,8 +2,9 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { computeTierTargets, splitIntoWindows } from './coach';
 import { parseLocalDate, addDays } from './dates';
+import { timesForDate } from './schedule';
+import { movementFor, repsOf } from '../data/movements';
 import type { DayPlan, Profile, Window } from '../types';
-import { EXERCISE_LABELS } from '../types';
 
 const CHANNEL_ID = 'windows';
 const LEAD_MINUTES = 5;
@@ -33,10 +34,11 @@ function notificationId(date: string, key: string): number {
   return Math.abs(hash) % 2_000_000;
 }
 
-function bodyFor(w: Window): string {
-  return w.items
-    .map((it) => `${it.reps} ${EXERCISE_LABELS[it.exercise].toLowerCase()}`)
-    .join(' + ') || 'Time for a set';
+function bodyFor(w: Window, profile: Profile): string {
+  const totals = new Map<Window['items'][number]['exercise'], number>();
+  for (const it of w.items) totals.set(it.exercise, (totals.get(it.exercise) ?? 0) + it.reps);
+  return [...totals].map(([ex, reps]) => repsOf(reps, movementFor(profile, ex))).join(' + ')
+    || 'Time for a set';
 }
 
 /** The windows a future day would be built with.
@@ -47,10 +49,11 @@ function bodyFor(w: Window): string {
  * arrives) and stamp tierStartedAt with a future date. These projections are
  * only ever used for reminder text - the real plan replaces them the moment
  * the user opens the app that day. */
-function projectedWindows(profile: Profile): Window[] {
-  const targets = computeTierTargets(profile.maxes, profile.tier ?? 100);
-  const count = profile.windowTimes?.length || profile.windowCount || 4;
-  return splitIntoWindows(targets, count, profile.wake, profile.sleep, profile.windowTimes);
+function projectedWindows(profile: Profile, date: string): Window[] {
+  const targets = computeTierTargets(profile.maxes, profile.tier ?? 100, profile.focus);
+  // Per date, not per profile: a surprise day's times differ every day.
+  const times = timesForDate(profile, date);
+  return splitIntoWindows(targets, times.length, profile.wake, profile.sleep, times);
 }
 
 /** Every date this module schedules into, today first. */
@@ -149,7 +152,7 @@ export async function scheduleWindowReminders(plan: DayPlan, profile: Profile): 
     const windows = date === plan.date
       ? plan.windows.map((w, slot) => ({ w, slot }))
         .filter(({ w }) => w.status === 'pending' || w.status === 'reflowed')
-      : projectedWindows(profile).map((w, slot) => ({ w, slot }));
+      : projectedWindows(profile, date).map((w, slot) => ({ w, slot }));
 
     for (const { w, slot } of windows) {
       const [h, m] = w.at.split(':').map(Number);
@@ -159,8 +162,8 @@ export async function scheduleWindowReminders(plan: DayPlan, profile: Profile): 
 
       pending.push({
         id: notificationId(date, `slot-${slot}`),
-        title: `Window at ${w.at}`,
-        body: bodyFor(w),
+        title: profile.dayStyle === 'surprise' ? 'Surprise set, go!' : `Set at ${w.at}`,
+        body: bodyFor(w, profile),
         schedule: { at },
         channelId: CHANNEL_ID,
       });

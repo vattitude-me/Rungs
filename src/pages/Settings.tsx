@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Mic, Timer, Vibrate, Bell, Lock, Info, ChevronDown, Clock, Minus, Plus, Gauge,
+  Mic, Timer, Vibrate, Bell, Lock, Info, ChevronDown, Gauge, Dumbbell,
   Sparkles, Cloud, Camera, Watch, Trophy,
 } from 'lucide-react';
 import Button from '../components/Button';
@@ -10,51 +10,29 @@ import ListRow from '../components/ListRow';
 import ModeChip from '../components/ModeChip';
 import ThemePicker from '../components/ThemePicker';
 import { applyTheme, isThemeId, DEFAULT_THEME, type ThemeId } from '../theme';
-import { getProfile, saveProfile, getSettings, saveSettings, getDayPlan } from '../db';
+import { getProfile, saveProfile, getSettings, saveSettings } from '../db';
+import { movementFor } from '../data/movements';
 import {
   isNative, requestNotificationPermission, hasNotificationPermission,
   scheduleWindowReminders, cancelWindowReminders,
 } from '../engine/notifications';
 import { installPlatform } from '../engine/install';
-import { generateDayPlan, rebuildTodayWindows } from '../engine/planGenerator';
+import { generateDayPlan } from '../engine/planGenerator';
 import { localDate, dayIndexFor, daysBetweenDates } from '../engine/dates';
 import { shouldRebaseline } from '../engine/coach';
 import { cloudConfigured } from '../cloud/config';
 import { useCloudSync } from '../hooks/useCloudSync';
-import type { Profile, AppSettings, CounterVariant, DashboardVariant } from '../types';
+import type { Profile, AppSettings, CounterVariant } from '../types';
 
 type NotifState = 'granted' | 'denied' | 'unsupported';
-
-const MIN_WINDOWS = 2;
-const MAX_WINDOWS = 6;
-
-/** Fallback schedule for a profile saved before window times were stored. */
-const FALLBACK_TIMES = ['10:00', '13:00', '16:00', '19:00'];
-
-/** Spreads `count` windows evenly between 09:00 and 19:00, used when the user
- * adds or removes a window rather than editing one by hand. */
-function evenTimes(count: number): string[] {
-  const start = 9 * 60;
-  const end = 19 * 60;
-  const step = count > 1 ? (end - start) / (count - 1) : 0;
-  return Array.from({ length: count }, (_, i) => {
-    const m = Math.round(start + step * i);
-    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-  });
-}
 
 // Friends and Squad used to head this list; both have shipped.
 const UPCOMING_FEATURES = [
   { icon: Sparkles, title: 'Motivational nudges', subtitle: 'Playful, max two a day' },
   { icon: Camera, title: 'Camera auto-count', subtitle: 'Pose detection counts reps for you' },
   { icon: Watch, title: 'Watch app', subtitle: 'Log sets from your wrist' },
-  { icon: Trophy, title: 'Challenges', subtitle: 'Timed group challenges' },
+  { icon: Trophy, title: 'Squad goals', subtitle: 'A shared weekly target with friends' },
 ] as const;
-
-const DASHBOARD_OPTIONS: { key: DashboardVariant; label: string }[] = [
-  { key: 'rings', label: 'Rings' },
-  { key: 'fuelBars', label: 'Bars' },
-];
 
 const COUNTER_OPTIONS: { key: CounterVariant; label: string }[] = [
   { key: 'cadenceRing', label: 'Ring' },
@@ -85,8 +63,6 @@ export default function Settings() {
   // known. Distinct from the reminders setting: the setting is what the user
   // asked for, this is whether the server can honour it.
   const [pushRegistered, setPushRegistered] = useState<boolean | null>(null);
-  const [editingWindow, setEditingWindow] = useState<number | null>(null);
-  const [windowDraft, setWindowDraft] = useState('');
   const [notifPermission, setNotifPermission] = useState<NotifState>(
     isNative() || 'Notification' in window ? 'denied' : 'unsupported'
   );
@@ -139,8 +115,7 @@ export default function Settings() {
   // React error #310 - and the first render here is always the empty one.
   if (!profile || !settings) return null;
 
-  const initial = (profile.name.trim()[0] || 'A').toUpperCase();
-  const windowTimes = profile.windowTimes?.length ? profile.windowTimes : FALLBACK_TIMES;
+  const initial = (profile.name.trim()[0] || '·').toUpperCase();
   const today = localDate();
   const testedOn = profile.lastRebaselineAt || localDate(new Date(profile.createdAt));
   const daysSinceTest = daysBetweenDates(testedOn, today);
@@ -163,40 +138,6 @@ export default function Settings() {
     setProfile(next);
     await saveProfile(next);
     setEditingName(false);
-  };
-
-  /** Persists a new schedule and re-cuts what's left of today onto it, so the
-   * change is visible now rather than only tomorrow. */
-  const applyWindowTimes = async (times: string[]) => {
-    if (!profile) return;
-    const sorted = [...times].sort((a, b) => a.localeCompare(b));
-    const next = { ...profile, windowTimes: sorted, windowCount: sorted.length };
-    setProfile(next);
-    await saveProfile(next);
-
-    const today = localDate();
-    const plan = await getDayPlan(today);
-    if (!plan) return;
-    // Rebuilt windows get fresh ids, so drop the reminders keyed to the old
-    // ones before they're orphaned, then re-arm from the new schedule.
-    await cancelWindowReminders(plan);
-    const rebuilt = await rebuildTodayWindows(plan, next, sorted);
-    // `next`, not `profile` - reminders now project future days from the
-    // profile, and those days must use the schedule just saved.
-    if (settings?.reminders) await scheduleWindowReminders(rebuilt, next);
-  };
-
-  const setWindowCount = async (count: number) => {
-    if (count < MIN_WINDOWS || count > MAX_WINDOWS) return;
-    await applyWindowTimes(evenTimes(count));
-  };
-
-  const saveWindowTime = async () => {
-    if (editingWindow === null || !windowDraft) { setEditingWindow(null); return; }
-    const next = [...windowTimes];
-    next[editingWindow] = windowDraft;
-    setEditingWindow(null);
-    await applyWindowTimes(next);
   };
 
   const updateSetting = async (patch: Partial<AppSettings>) => {
@@ -268,7 +209,7 @@ export default function Settings() {
         {!editingName ? (
           <span className="flex-1 flex items-center gap-2.5">
             <span className="flex-1 flex flex-col gap-px">
-              <span className="text-[17px] font-medium">{profile.name}</span>
+              <span className={`text-[17px] font-medium ${profile.name.trim() ? '' : 'text-neutral-500'}`}>{profile.name.trim() || 'Add your name'}</span>
               <span className="text-[11.5px] text-neutral-500 truncate">
                 {account ? (account.email ?? 'Synced') : 'This phone only'}
               </span>
@@ -301,86 +242,30 @@ export default function Settings() {
       </div>
 
       <div className="flex flex-col gap-1.75">
-        <SectionLabel>STRENGTH</SectionLabel>
+        <SectionLabel>YOUR WORKOUT</SectionLabel>
         <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
           <ListRow
             isFirst
+            icon={<Dumbbell size={14} />}
+            title="Moves, kit & schedule"
+            subtitle={`${movementFor(profile, 'push').name} · ${movementFor(profile, 'pull').name} · ${movementFor(profile, 'squat').name}`}
+            trailing={CHEVRON}
+            onClick={() => navigate('/settings/workout')}
+          />
+          <ListRow
             icon={<Gauge size={14} />}
             title="Retest your maxes"
             subtitle={
-              retestDue
-                ? `Due now · last tested ${lastTestedLabel}`
-                : `${profile.maxes.push} push · ${profile.maxes.pull} pull · ${profile.maxes.squat} squat`
+              profile.maxesEstimated
+                ? 'Estimated from your level · test for accuracy'
+                : retestDue
+                  ? `Due now · last tested ${lastTestedLabel}`
+                  : `${profile.maxes.push} push · ${profile.maxes.pull} pull · ${profile.maxes.squat} squat`
             }
             trailing={CHEVRON}
             onClick={() => navigate('/settings/retest')}
           />
         </div>
-        {retestDue && (
-          <span className="text-[11px] leading-[1.5] text-neutral-600 px-0.5">
-            Your plan still sizes sets from these numbers. If they're out of
-            date the day gets harder or easier than it should be.
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.75">
-        <div className="flex items-baseline justify-between px-0.5">
-          <span className="text-[11px] tracking-[0.1em] text-neutral-500">SCHEDULE</span>
-          <div className="flex items-center gap-2">
-            <span className="text-[11.5px] text-neutral-500">
-              {windowTimes.length} a day
-            </span>
-            <button
-              type="button"
-              aria-label="One less window"
-              disabled={windowTimes.length <= MIN_WINDOWS}
-              onClick={() => setWindowCount(windowTimes.length - 1)}
-              className="w-8 h-8 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
-            >
-              <Minus size={13} />
-            </button>
-            <button
-              type="button"
-              aria-label="One more window"
-              disabled={windowTimes.length >= MAX_WINDOWS}
-              onClick={() => setWindowCount(windowTimes.length + 1)}
-              className="w-8 h-8 rounded-full bg-surface grid place-items-center text-neutral-300 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
-            >
-              <Plus size={13} />
-            </button>
-          </div>
-        </div>
-        <div className="rounded-[14px] bg-surface shadow-sm overflow-hidden">
-          {windowTimes.map((t, i) => (
-            <div key={i}>
-              <ListRow
-                isFirst={i === 0}
-                icon={<Clock size={14} />}
-                title={t}
-                subtitle={i === 0 ? 'First window of the day' : i === windowTimes.length - 1 ? 'Last chance to catch up' : 'Tap to change'}
-                trailing={CHEVRON}
-                onClick={() => { setEditingWindow(i); setWindowDraft(t); }}
-              />
-              {editingWindow === i && (
-                <div className="flex items-center gap-2.5 px-3.5 py-3 bg-accent-900">
-                  <input
-                    type="time"
-                    value={windowDraft}
-                    onChange={(e) => setWindowDraft(e.target.value)}
-                    className="flex-1 h-9 px-2.5 rounded-lg bg-surface border border-neutral-800 text-sm text-text outline-none focus-visible:border-accent"
-                  />
-                  <Button variant="secondary" className="h-9 px-3 text-xs flex-none" onClick={() => setEditingWindow(null)}>Cancel</Button>
-                  <Button variant="primary" className="h-9 px-3 text-xs flex-none" onClick={saveWindowTime}>Save</Button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        <span className="text-[11px] leading-[1.5] text-neutral-600 px-0.5">
-          Your daily reps are split across these times. Anything you've already
-          finished today stays done - only what's left gets re-cut.
-        </span>
       </div>
 
       <section className="flex flex-col gap-1.75">
@@ -389,17 +274,6 @@ export default function Settings() {
           <div className="flex flex-col gap-2.5">
             <span className="text-[13.5px]">Colour theme</span>
             <ThemePicker value={theme} onChange={chooseTheme} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <span className="flex flex-col gap-px">
-              <span className="text-[13.5px]">Home dashboard</span>
-              <span className="text-[11px] text-neutral-600">How today's progress is drawn</span>
-            </span>
-            <ModeChip
-              options={DASHBOARD_OPTIONS}
-              value={settings.dashboardVariant}
-              onChange={(dashboardVariant) => void updateSetting({ dashboardVariant })}
-            />
           </div>
           <div className="flex flex-col gap-2">
             <span className="flex flex-col gap-px">

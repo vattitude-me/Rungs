@@ -5,7 +5,7 @@ import { localDate, dayIndexFor, timeToMinutes, nowMinutes } from '../engine/dat
 import {
   isNative, scheduleWindowReminders, hasNotificationPermission, requestNotificationPermission,
 } from '../engine/notifications';
-import { EXERCISE_LABELS } from '../types';
+import { movementFor, repsOf } from '../data/movements';
 
 const CHECK_INTERVAL_MS = 30_000;
 const LEAD_MINUTES = 5;
@@ -58,7 +58,7 @@ export function useReminders() {
         const minutesUntil = timeToMinutes(w.at) - nowMin;
         if (minutesUntil <= LEAD_MINUTES && minutesUntil >= 0) {
           const item = w.items[0];
-          const body = item ? `${item.reps} ${EXERCISE_LABELS[item.exercise].toLowerCase()} at ${w.at}` : `Window at ${w.at}`;
+          const body = item ? `${repsOf(item.reps, movementFor(profile, item.exercise))} at ${w.at}` : `Set at ${w.at}`;
           new Notification('Coming up', { body, tag: key });
           fired.add(key);
         }

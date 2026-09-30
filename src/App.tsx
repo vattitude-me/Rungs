@@ -12,10 +12,11 @@ import type { Profile } from './types';
 import PhoneFrame from './components/PhoneFrame';
 import Layout from './components/Layout';
 import Welcome from './pages/onboarding/Welcome';
-import Name from './pages/onboarding/Name';
-import Baseline from './pages/onboarding/Baseline';
-import Schedule from './pages/onboarding/Schedule';
-import PlanPreview from './pages/onboarding/PlanPreview';
+import Level from './pages/onboarding/Level';
+import Setup from './pages/onboarding/Setup';
+import Ready from './pages/onboarding/Ready';
+import CheckIn from './pages/CheckIn';
+import Workout from './pages/Workout';
 import Session from './pages/Session';
 import LogReps from './pages/LogReps';
 import Today from './pages/Today';
@@ -128,10 +129,11 @@ export default function App() {
       <PhoneFrame>
         <Routes>
           <Route path="/onboarding/welcome" element={<Welcome />} />
-          <Route path="/onboarding/name" element={<Name />} />
-          <Route path="/onboarding/baseline" element={<Baseline />} />
-          <Route path="/onboarding/schedule" element={<Schedule />} />
-          <Route path="/onboarding/plan" element={<PlanPreview />} />
+          <Route path="/onboarding/level" element={<Level />} />
+          <Route path="/onboarding/setup" element={<Setup />} />
+          <Route path="/onboarding/ready" element={<Ready />} />
+          <Route path="/checkin" element={<CheckIn />} />
+          <Route path="/settings/workout" element={<Workout />} />
           <Route path="/session" element={<Session />} />
           <Route path="/session/log" element={<LogReps />} />
           <Route path="/settings/privacy" element={<DataPrivacy />} />

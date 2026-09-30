@@ -8,6 +8,7 @@ import {
   getAllDayRecords, saveProfile,
 } from '../db';
 import { timeToMinutes, nowMinutes } from './dates';
+import { timesForDate } from './schedule';
 
 const EXERCISES: Exercise[] = ['push', 'pull', 'squat'];
 
@@ -29,14 +30,16 @@ export async function generateDayPlan(
   // Before building a new day, see whether the user has earned the next tier.
   const tier = await resolveTier(profile, date);
 
-  const targets = computeTierTargets(profile.maxes, tier);
+  const targets = computeTierTargets(profile.maxes, tier, profile.focus);
   const totalVolume = EXERCISES.reduce((a, ex) => a + targets[ex], 0);
 
+  // The day style decides the times: the user's own, one session, or a fresh
+  // surprise draw for this date.
+  const times = timesForDate(profile, date);
   const span = wakingSpanHours(profile.wake, profile.sleep);
-  const windowCount = profile.windowTimes?.length
-    || profile.windowCount
+  const windowCount = times.length
     || computeWindowCount(span, totalVolume / EXERCISES.length);
-  const windows = splitIntoWindows(targets, windowCount, profile.wake, profile.sleep, profile.windowTimes)
+  const windows = splitIntoWindows(targets, windowCount, profile.wake, profile.sleep, times)
     .map((w) => ({ ...w, items: splitIntoSets(w.items, profile.maxes) }));
 
   const dayOfWeek = new Date(date).getDay();
@@ -205,15 +208,30 @@ export async function applyRetestedMaxes(
   maxes: Record<Exercise, number>,
   today: string
 ): Promise<Profile> {
-  const next: Profile = { ...profile, maxes, lastRebaselineAt: today };
+  const next: Profile = { ...profile, maxes, lastRebaselineAt: today, maxesEstimated: false };
   await saveProfile(next);
 
   const plan = await getDayPlan(today);
   if (plan) {
-    const times = next.windowTimes?.length
-      ? next.windowTimes
-      : plan.windows.map((w) => w.at);
-    await rebuildTodayWindows({ ...plan, targets: computeTierTargets(maxes, plan.tier ?? 100) }, next, times);
+    await rebuildTodayWindows(
+      { ...plan, targets: computeTierTargets(maxes, plan.tier ?? 100, next.focus) },
+      next,
+      timesForDate(next, today),
+    );
   }
   return next;
+}
+
+/** Saves a changed profile and re-cuts what's left of today to match it -
+ * for the Settings changes that alter the day's shape (style, times, focus).
+ * Settled windows stay as they are; see rebuildTodayWindows. */
+export async function applyProfileToToday(next: Profile, today: string): Promise<DayPlan | undefined> {
+  await saveProfile(next);
+  const plan = await getDayPlan(today);
+  if (!plan) return undefined;
+  return rebuildTodayWindows(
+    { ...plan, targets: computeTierTargets(next.maxes, plan.tier ?? 100, next.focus) },
+    next,
+    timesForDate(next, today),
+  );
 }

@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'icon' | 'danger';
+type Variant = 'solid' | 'primary' | 'secondary' | 'ghost' | 'icon' | 'danger';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -9,6 +9,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<Variant, string> = {
+  // The one filled button a screen gets: its main action. Everything else
+  // stays outlined so the eye lands here first.
+  solid: 'bg-accent! text-on-accent border border-accent hover:brightness-110 active:brightness-95 shadow-[0_6px_20px_-6px_var(--color-accent)]',
   primary: 'text-accent border border-accent hover:bg-accent/12 active:bg-accent/22',
   secondary: 'text-text border border-neutral-800 hover:bg-text/7 active:bg-text/14',
   ghost: 'text-accent border-0 hover:bg-accent/10 active:bg-accent/18',

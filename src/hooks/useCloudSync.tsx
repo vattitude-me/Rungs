@@ -89,7 +89,7 @@ async function publishSharedProfile(uid: string): Promise<void> {
     const percent = goal > 0 ? (100 * done) / goal : 0;
 
     await friends.publishProfile(
-      uid, profile.name, percent, streak.current, today, done, lifetime
+      uid, profile.name.trim() || 'Rungs athlete', percent, streak.current, today, done, lifetime
     );
   } catch (e) {
     // Non-fatal for sync itself - a workout backs up fine whether or not the
