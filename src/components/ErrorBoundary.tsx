@@ -25,7 +25,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="w-full h-[100dvh] bg-bg text-text flex flex-col items-center justify-center gap-4 px-8 text-center">
+        <div className="w-full h-[100svh] bg-bg text-text flex flex-col items-center justify-center gap-4 px-8 text-center">
           <span className="text-[15px] font-medium">Something went wrong</span>
           <span className="text-[12.5px] leading-[1.5] text-neutral-500 max-w-[280px]">
             The app hit an unexpected error. Reloading usually fixes it; your data on this device is untouched.

@@ -71,8 +71,12 @@ export default function PhoneFrame({ children }: PhoneFrameProps) {
     // No simulated status bar on a real phone - the OS draws its own clock and
     // battery there, and ours would sit on top of it. We just reserve the
     // safe-area height so content clears the notch/cutout.
+    //
+    // svh (not dvh): the small viewport doesn't move when Chrome's URL bar
+    // hides/shows on scroll. With dvh the shell resized mid-scroll and the
+    // absolute bottom nav slid up and down with it.
     return (
-      <div className="w-full h-[100dvh] bg-bg text-text flex flex-col overflow-hidden">
+      <div className="w-full h-[100svh] bg-bg text-text flex flex-col overflow-hidden">
         <div className="flex-none safe-top" />
         <div id="app-viewport" className="flex-1 overflow-hidden relative">{children}</div>
       </div>
